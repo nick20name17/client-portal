@@ -1,0 +1,16 @@
+{
+  "name": "client-platform",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:client": "bun run dev --cwd client",
+    "dev:server": "bun run dev --cwd server",
+    "build": "bun run build --cwd client",
+    "install:all": "bun install --cwd client && bun install --cwd server"
+  },
+  "workspaces": [
+    "client",
+    "server"
+  ]
+}
