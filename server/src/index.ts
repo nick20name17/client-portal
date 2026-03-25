@@ -1,7 +1,8 @@
 import { Elysia } from "elysia";
+import { openapi } from "./lib/openapi";
 
-const app = new Elysia().get("/", () => "Hello Elysia").listen(3000);
+const app = new Elysia({ prefix: "/api" })
+    .use(openapi)
+    .listen(process.env.PORT ?? 3000);
 
-console.log(
-  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
-);
+export default app;
