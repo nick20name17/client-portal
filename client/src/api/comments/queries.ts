@@ -13,7 +13,8 @@ export type Comment = {
     id: number;
     fileId: number;
     authorId: string;
-    cssSelector: string;
+    cssSelector: string | null;
+    anchorJson: Record<string, unknown> | null;
     content: string;
     createdAt: string;
     updatedAt: string;

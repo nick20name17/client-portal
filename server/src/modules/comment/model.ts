@@ -2,11 +2,6 @@ import { comments, replies } from "@/db/schema/app";
 import { createInsertSchema, createSelectSchema } from "drizzle-typebox";
 import { t } from "elysia";
 
-const _insertCommentSchema = createInsertSchema(comments, {
-    cssSelector: t.String({ minLength: 1, maxLength: 1024 }),
-    content: t.String({ minLength: 1, maxLength: 10000 }),
-});
-
 const _insertReplySchema = createInsertSchema(replies, {
     content: t.String({ minLength: 1, maxLength: 10000 }),
 });
@@ -18,7 +13,8 @@ const commentWithReplies = t.Object({
     id: t.Number(),
     fileId: t.Number(),
     authorId: t.String(),
-    cssSelector: t.String(),
+    cssSelector: t.Union([t.String(), t.Null()]),
+    anchorJson: t.Union([t.Unknown(), t.Null()]),
     content: t.String(),
     createdAt: t.Date(),
     updatedAt: t.Date(),
@@ -35,7 +31,11 @@ export const CommentModelSchema = {
     selectComment: commentSelect,
     selectReply: replySelect,
     commentWithReplies,
-    createComment: t.Pick(_insertCommentSchema, ["cssSelector", "content"]),
+    createComment: t.Object({
+        content: t.String({ minLength: 1, maxLength: 10000 }),
+        cssSelector: t.Optional(t.String({ minLength: 1, maxLength: 2048 })),
+        anchorJson: t.Optional(t.Any()),
+    }),
     updateComment: t.Object({
         content: t.String({ minLength: 1, maxLength: 10000 }),
     }),

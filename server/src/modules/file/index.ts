@@ -42,6 +42,25 @@ export const fileModule = new Elysia({
             auth: true,
         },
     )
+    .post(
+        "/:projectId/files/sync",
+        async ({ user, params: { projectId } }) =>
+            FileService.syncHtmlFilesWithAuth(
+                projectId,
+                user.id,
+                user.role as string,
+            ),
+        {
+            params: FileModelSchema.params,
+            response: {
+                200: t.Array(FileModelSchema.select),
+                403: FileModelSchema.forbidden,
+                404: FileModelSchema.projectNotFound,
+                422: FileModelSchema.githubError,
+            },
+            auth: true,
+        },
+    )
     .get(
         "/:projectId/files/:fileId",
         async ({ user, params: { projectId, fileId } }) =>

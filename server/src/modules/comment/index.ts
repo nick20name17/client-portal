@@ -46,6 +46,7 @@ export const commentModule = new Elysia({
                 200: CommentModelSchema.selectComment,
                 403: CommentModelSchema.forbidden,
                 404: CommentModelSchema.fileNotFound,
+                422: t.Object({ message: t.String() }),
             },
             auth: true,
         },

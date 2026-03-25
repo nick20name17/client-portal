@@ -1,10 +1,16 @@
 import { apiClient } from "@/api/client";
 import type { Comment, Reply } from "./queries";
 
+export type CreateCommentBody = {
+    content: string;
+    cssSelector?: string;
+    anchorJson?: Record<string, unknown>;
+};
+
 export const createComment = (
     projectId: number,
     fileId: number,
-    body: { cssSelector: string; content: string },
+    body: CreateCommentBody,
 ) =>
     apiClient.post<Comment>(
         `/api/projects/${projectId}/files/${fileId}/comments`,

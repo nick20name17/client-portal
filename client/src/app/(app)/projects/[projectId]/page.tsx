@@ -1,26 +1,19 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FileIcon, PlusIcon } from "lucide-react";
+import { FileIcon, RefreshCwIcon } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { use } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { authClient } from "@/lib/auth-client";
-import { pageShellClass } from "@/lib/page-shell";
-import { addFile } from "@/api/files/mutations";
+import { syncFilesFromGithub } from "@/api/files/mutations";
 import { fileKeys, filesQueryOptions } from "@/api/files/queries";
 import { projectQueryOptions } from "@/api/projects/queries";
 import { queryClient } from "@/providers/react-query";
-
-const DEFAULT_FILE = "index.html";
+import { pageShellClass } from "@/lib/page-shell";
+import { cn } from "@/lib/utils";
 
 export default function ProjectDetailPage({
     params,
@@ -29,9 +22,7 @@ export default function ProjectDetailPage({
 }) {
     const { projectId } = use(params);
     const id = Number(projectId);
-
-    const { data: session } = authClient.useSession();
-    const isAdmin = (session?.user as any)?.role === "admin";
+    const pathname = usePathname();
 
     const { data: project, isLoading: projectLoading } = useQuery(
         projectQueryOptions(id),
@@ -40,12 +31,18 @@ export default function ProjectDetailPage({
         filesQueryOptions(id),
     );
 
-    const alreadyAdded = files?.some((f) => f.path === DEFAULT_FILE);
+    const sortedFiles = [...(files ?? [])].sort((a, b) =>
+        a.path.localeCompare(b.path),
+    );
 
-    const mutation = useMutation({
-        mutationFn: () => addFile(id, DEFAULT_FILE),
-        onSuccess: () => {
-            toast.success(`${DEFAULT_FILE} added`);
+    const syncMutation = useMutation({
+        mutationFn: () => syncFilesFromGithub(id),
+        onSuccess: (list) => {
+            toast.success(
+                list.length
+                    ? `Synced ${list.length} HTML file${list.length === 1 ? "" : "s"}`
+                    : "Sync complete (no .html files in repo)",
+            );
             queryClient.invalidateQueries({ queryKey: fileKeys.all(id) });
         },
         onError: (err) => toast.error(err.message),
@@ -53,7 +50,7 @@ export default function ProjectDetailPage({
 
     return (
         <div className={pageShellClass}>
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     {projectLoading ? (
                         <Skeleton className="h-7 w-40" />
@@ -71,61 +68,78 @@ export default function ProjectDetailPage({
                     )}
                 </div>
 
-                {isAdmin && !alreadyAdded && (
-                    <Button
-                        size="sm"
-                        disabled={mutation.isPending || filesLoading}
-                        onClick={() => mutation.mutate()}
-                    >
-                        <PlusIcon />
-                        {mutation.isPending ? "Adding…" : "Add index.html"}
-                    </Button>
-                )}
+                <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={syncMutation.isPending || filesLoading}
+                    onClick={() => syncMutation.mutate()}
+                >
+                    <RefreshCwIcon
+                        className={cn(
+                            "size-4",
+                            syncMutation.isPending && "animate-spin",
+                        )}
+                    />
+                    {syncMutation.isPending ? "Syncing…" : "Sync from GitHub"}
+                </Button>
             </div>
 
             {filesLoading ? (
                 <div className="space-y-2">
                     {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-16 rounded-xl" />
+                        <Skeleton key={i} className="h-10 rounded-lg" />
                     ))}
                 </div>
-            ) : !files?.length ? (
+            ) : !sortedFiles.length ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
                     <FileIcon className="size-10 text-muted-foreground" />
-                    <p className="text-muted-foreground">No files yet</p>
-                    {isAdmin && (
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={mutation.isPending}
-                            onClick={() => mutation.mutate()}
-                        >
-                            Add index.html
-                        </Button>
-                    )}
+                    <p className="max-w-sm text-muted-foreground">
+                        No HTML files found for this repository. Add{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                            .html
+                        </code>{" "}
+                        files to the repo on GitHub, then sync.
+                    </p>
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={syncMutation.isPending}
+                        onClick={() => syncMutation.mutate()}
+                    >
+                        <RefreshCwIcon className="size-4" />
+                        Sync from GitHub
+                    </Button>
                 </div>
             ) : (
-                <div className="space-y-2">
-                    {files.map((file) => (
-                        <Link
-                            key={file.id}
-                            href={`/projects/${id}/files/${file.id}`}
-                        >
-                            <Card className="cursor-pointer transition-shadow hover:shadow-md">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2 text-sm">
-                                        <FileIcon className="size-4 text-primary" />
-                                        {file.path}
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="truncate text-xs text-muted-foreground">
-                                        {file.githubUrl}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        </Link>
-                    ))}
+                <div>
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        HTML pages
+                    </p>
+                    <div className="flex flex-wrap gap-2 border-b border-border pb-3">
+                        {sortedFiles.map((file) => {
+                            const href = `/projects/${id}/files/${file.id}`;
+                            const active =
+                                pathname === href ||
+                                pathname?.startsWith(`${href}/`);
+                            return (
+                                <Link
+                                    key={file.id}
+                                    href={href}
+                                    className={cn(
+                                        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                                        active
+                                            ? "bg-primary text-primary-foreground"
+                                            : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+                                    )}
+                                >
+                                    {file.path}
+                                </Link>
+                            );
+                        })}
+                    </div>
+                    <p className="mt-4 text-sm text-muted-foreground">
+                        Open a tab above to preview the page and leave comments.
+                    </p>
                 </div>
             )}
         </div>

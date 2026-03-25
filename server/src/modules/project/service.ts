@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { projectMembers, projects } from "@/db/schema/app";
+import { FileService } from "@/modules/file/service";
 import { and, eq } from "drizzle-orm";
 import { status } from "elysia";
 
@@ -49,6 +50,13 @@ export const ProjectService = {
             .insert(projects)
             .values({ ...body, createdBy: userId })
             .returning();
+
+        try {
+            await FileService.syncHtmlFiles(project.id);
+        } catch (err) {
+            await db.delete(projects).where(eq(projects.id, project.id));
+            throw err;
+        }
 
         return project;
     },

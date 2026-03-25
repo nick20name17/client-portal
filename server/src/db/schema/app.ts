@@ -2,6 +2,7 @@ import { relations } from "drizzle-orm";
 import {
     index,
     integer,
+    jsonb,
     pgTable,
     serial,
     text,
@@ -68,7 +69,13 @@ export const projectFiles = pgTable(
             .defaultNow()
             .notNull(),
     },
-    (table) => [index("project_files_projectId_idx").on(table.projectId)],
+    (table) => [
+        index("project_files_projectId_idx").on(table.projectId),
+        unique("project_files_project_path_unique").on(
+            table.projectId,
+            table.path,
+        ),
+    ],
 );
 
 export const comments = pgTable(
@@ -81,7 +88,8 @@ export const comments = pgTable(
         authorId: text("author_id")
             .notNull()
             .references(() => user.id, { onDelete: "cascade" }),
-        cssSelector: text("css_selector").notNull(),
+        cssSelector: text("css_selector"),
+        anchorJson: jsonb("anchor_json").$type<Record<string, unknown>>(),
         content: text("content").notNull(),
         createdAt: timestamp("created_at", { withTimezone: true })
             .defaultNow()

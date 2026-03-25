@@ -52,13 +52,36 @@ export const CommentService = {
         fileId: number,
         userId: string,
         role: string,
-        body: { cssSelector: string; content: string },
+        body: {
+            content: string;
+            cssSelector?: string | null;
+            anchorJson?: Record<string, unknown> | null;
+        },
     ) {
         await assertFileAccess(projectId, fileId, userId, role);
 
+        const hasSelector =
+            body.cssSelector != null && String(body.cssSelector).length > 0;
+        const hasAnchor =
+            body.anchorJson != null &&
+            typeof body.anchorJson === "object" &&
+            Object.keys(body.anchorJson as object).length > 0;
+
+        if (!hasSelector && !hasAnchor) {
+            throw status(422, {
+                message: "Provide cssSelector and/or anchorJson",
+            } as const);
+        }
+
         const [comment] = await db
             .insert(comments)
-            .values({ fileId, authorId: userId, ...body })
+            .values({
+                fileId,
+                authorId: userId,
+                cssSelector: hasSelector ? body.cssSelector! : null,
+                anchorJson: hasAnchor ? body.anchorJson! : null,
+                content: body.content,
+            })
             .returning();
 
         return comment;

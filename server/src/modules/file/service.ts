@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { projectFiles, projects } from "@/db/schema/app";
 import { env } from "@/utils/env";
-import { and, eq } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 import { status } from "elysia";
 
 type GithubRepo = { owner: string; repo: string };
@@ -141,6 +141,93 @@ async function resolveGithubRawUrl(
     } as const);
 }
 
+async function fetchHtmlBlobPathsFromGithub(repoUrl: string): Promise<string[]> {
+    const parsed = parseGithubRepo(repoUrl);
+    if (!parsed) {
+        throw status(422, {
+            message: "Invalid GitHub repository URL",
+        } as const);
+    }
+    const { owner, repo } = parsed;
+    const branch = await fetchDefaultBranch(owner, repo);
+    if (!branch) {
+        throw status(422, {
+            message: "Could not resolve default branch for this repository",
+        } as const);
+    }
+
+    const refRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`,
+        { headers: githubHeaders() },
+    );
+    if (!refRes.ok) {
+        throw status(422, {
+            message: "Could not resolve branch ref from GitHub",
+        } as const);
+    }
+    const refData = (await refRes.json()) as { object?: { sha?: string } };
+    const commitSha = refData.object?.sha;
+    if (!commitSha) {
+        throw status(422, {
+            message: "Invalid Git ref response",
+        } as const);
+    }
+
+    const commitRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/commits/${commitSha}`,
+        { headers: githubHeaders() },
+    );
+    if (!commitRes.ok) {
+        throw status(422, {
+            message: "Could not fetch commit from GitHub",
+        } as const);
+    }
+    const commitData = (await commitRes.json()) as { tree?: { sha?: string } };
+    const treeSha = commitData.tree?.sha;
+    if (!treeSha) {
+        throw status(422, {
+            message: "Invalid commit response from GitHub",
+        } as const);
+    }
+
+    const treeRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`,
+        { headers: githubHeaders() },
+    );
+    if (!treeRes.ok) {
+        let msg = "Could not fetch repository tree from GitHub";
+        try {
+            const err = (await treeRes.json()) as { message?: string };
+            if (err.message) msg = err.message;
+        } catch {
+            /* ignore */
+        }
+        throw status(422, { message: msg } as const);
+    }
+    const treeData = (await treeRes.json()) as {
+        tree?: Array<{ path?: string; type?: string }>;
+        truncated?: boolean;
+    };
+    if (treeData.truncated) {
+        throw status(422, {
+            message:
+                "Repository tree is too large (truncated). Set GITHUB_TOKEN or use a smaller repo.",
+        } as const);
+    }
+
+    const paths: string[] = [];
+    for (const entry of treeData.tree ?? []) {
+        if (
+            entry.type === "blob" &&
+            entry.path &&
+            entry.path.toLowerCase().endsWith(".html")
+        ) {
+            paths.push(entry.path);
+        }
+    }
+    return paths.sort((a, b) => a.localeCompare(b));
+}
+
 async function assertProjectAccess(
     projectId: number,
     userId: string,
@@ -164,6 +251,59 @@ async function assertProjectAccess(
 }
 
 export const FileService = {
+    /**
+     * Discovers all `.html` blobs in the project's GitHub repo, upserts rows, and removes stale paths.
+     */
+    async syncHtmlFiles(projectId: number) {
+        const project = await db.query.projects.findFirst({
+            where: eq(projects.id, projectId),
+        });
+
+        if (!project)
+            throw status(404, { message: "Project not found" } as const);
+
+        const htmlPaths = await fetchHtmlBlobPathsFromGithub(project.repoUrl);
+
+        for (const path of htmlPaths) {
+            const githubUrl = await resolveGithubRawUrl(project.repoUrl, path);
+            await db
+                .insert(projectFiles)
+                .values({ projectId, path, githubUrl })
+                .onConflictDoUpdate({
+                    target: [projectFiles.projectId, projectFiles.path],
+                    set: { githubUrl },
+                });
+        }
+
+        if (htmlPaths.length === 0) {
+            await db
+                .delete(projectFiles)
+                .where(eq(projectFiles.projectId, projectId));
+        } else {
+            await db
+                .delete(projectFiles)
+                .where(
+                    and(
+                        eq(projectFiles.projectId, projectId),
+                        notInArray(projectFiles.path, htmlPaths),
+                    ),
+                );
+        }
+
+        return db.query.projectFiles.findMany({
+            where: eq(projectFiles.projectId, projectId),
+        });
+    },
+
+    async syncHtmlFilesWithAuth(
+        projectId: number,
+        userId: string,
+        role: string,
+    ) {
+        await assertProjectAccess(projectId, userId, role);
+        return FileService.syncHtmlFiles(projectId);
+    },
+
     async create(
         projectId: number,
         _userId: string,
@@ -181,6 +321,10 @@ export const FileService = {
         const [file] = await db
             .insert(projectFiles)
             .values({ projectId, path, githubUrl })
+            .onConflictDoUpdate({
+                target: [projectFiles.projectId, projectFiles.path],
+                set: { githubUrl },
+            })
             .returning();
 
         return file;
