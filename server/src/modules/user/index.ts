@@ -1,5 +1,5 @@
 import { authMiddleware, requireAdmin } from "@/middleware/auth";
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import { UserModelSchema } from "./model";
 import { UserService } from "./service";
 
@@ -11,6 +11,18 @@ export const userModule = new Elysia({
     },
 })
     .use(authMiddleware)
+    .get(
+        "/",
+        async () => UserService.getAll(),
+        {
+            response: {
+                200: t.Array(UserModelSchema.select),
+                403: UserModelSchema.forbidden,
+            },
+            auth: true,
+            beforeHandle: requireAdmin,
+        },
+    )
     .patch(
         "/:id/role",
         async ({ params: { id }, body }) => UserService.updateRole(id, body),

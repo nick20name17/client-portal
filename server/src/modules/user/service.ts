@@ -6,6 +6,10 @@ import { status } from "elysia";
 type UpdateRoleBody = { role: "admin" | "client" };
 
 export const UserService = {
+    async getAll() {
+        return db.query.user.findMany();
+    },
+
     async updateRole(id: string, body: UpdateRoleBody) {
         const [updated] = await db
             .update(user)

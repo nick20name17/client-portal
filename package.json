@@ -7,7 +7,8 @@
     "dev:client": "bun run dev --cwd client",
     "dev:server": "bun run dev --cwd server",
     "build": "bun run build --cwd client",
-    "install:all": "bun install --cwd client && bun install --cwd server"
+    "start:client": "bun run start --cwd client",
+    "lint": "bun run lint --cwd client"
   },
   "workspaces": [
     "client",

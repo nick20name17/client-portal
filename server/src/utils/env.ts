@@ -14,11 +14,15 @@ FormatRegistry.Set("uri", (value) => {
 const EnvSchema = t.Object({
     DATABASE_URL: t.String({ minLength: 1, format: "uri" }),
     TRUSTED_ORIGIN: t.String({ minLength: 1, format: "uri" }),
+    /** Comma-separated extra origins (e.g. preview deploy URL, tunnel). */
+    BETTER_AUTH_TRUSTED_ORIGINS: t.Optional(t.String({ minLength: 1 })),
     BETTER_AUTH_URL: t.String({ minLength: 1, format: "uri" }),
     BETTER_AUTH_SECRET: t.String({ minLength: 32 }),
     PORT: t.Optional(t.Number({ minimum: 1, maximum: 65535, default: 3000 })),
     RESEND_API_KEY: t.Optional(t.String({ minLength: 1 })),
     RESEND_FROM_EMAIL: t.Optional(t.String({ minLength: 1 })),
+    /** Higher rate limits and private repo access for GitHub API / raw fetches. */
+    GITHUB_TOKEN: t.Optional(t.String({ minLength: 1 })),
 });
 
 export const env = Value.Parse(EnvSchema, process.env);

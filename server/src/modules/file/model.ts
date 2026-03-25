@@ -12,5 +12,7 @@ export const FileModelSchema = {
     notFound: t.Object({ message: t.Literal("File not found") }),
     projectNotFound: t.Object({ message: t.Literal("Project not found") }),
     forbidden: t.Object({ message: t.Literal("Forbidden") }),
-    githubError: t.Object({ message: t.Literal("Failed to fetch file from GitHub") }),
+    githubError: t.Object({
+        message: t.String({ minLength: 1 }),
+    }),
 } as const;

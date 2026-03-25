@@ -8,9 +8,9 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
+# next.js (workspaces)
+**/.next/
+**/out/
 
 # production
 /build
