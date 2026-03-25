@@ -16,6 +16,12 @@ export const auth = betterAuth({
         enabled: true,
     },
     user: {
+        additionalFields: {
+            role: {
+                type: "string",
+                defaultValue: "client",
+            },
+        },
         deleteUser: {
             enabled: true,
         },

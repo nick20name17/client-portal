@@ -1,8 +1,18 @@
+import { handleError } from "@/lib/error-handler";
+import { openapi } from "@/lib/openapi";
+import { authMiddleware } from "@/middleware/auth";
+import { commentModule, fileModule, projectModule, userModule } from "@/modules";
+import { env } from "@/utils/env";
 import { Elysia } from "elysia";
-import { openapi } from "./lib/openapi";
 
 const app = new Elysia({ prefix: "/api" })
     .use(openapi)
-    .listen(process.env.PORT ?? 3000);
+    .use(authMiddleware)
+    .use(userModule)
+    .use(projectModule)
+    .use(fileModule)
+    .use(commentModule)
+    .onError(handleError)
+    .listen(env.PORT ?? 3000);
 
 export default app;
