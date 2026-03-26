@@ -10,6 +10,7 @@ import { HtmlFrame } from "@/components/viewer/HtmlFrame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sidebar,
   SidebarContent,
@@ -30,7 +31,7 @@ import { useProjectFiles, useProject, useSyncProjectFiles } from "@/hooks/use-pr
 import { useProjectSSE } from "@/hooks/use-project-sse";
 import { useTags } from "@/hooks/use-tags";
 import { apiText } from "@/lib/api";
-import type { Anchor } from "@/types";
+import type { Anchor, Comment } from "@/types";
 
 const emptyAnchor = (): Anchor => ({
   dataComment: null,
@@ -45,6 +46,21 @@ function anchorKey(anchor: Anchor | null | undefined): string {
   if (anchor.dataComment) return `dc:${anchor.dataComment}`;
   if (anchor.selector) return `sel:${anchor.selector}`;
   return "";
+}
+
+/** Comments/replies that store a selector or data-comment — checked in the preview iframe for DOM resolution. */
+function flattenCommentAnchorsForResolution(comments: Comment[] | undefined): { id: string; anchor: Anchor }[] {
+  if (!comments?.length) return [];
+  const out: { id: string; anchor: Anchor }[] = [];
+  for (const c of comments) {
+    const a = c.anchor as Anchor;
+    if (a && (a.selector || a.dataComment)) out.push({ id: c.id, anchor: a });
+    for (const r of c.replies ?? []) {
+      const ra = r.anchor as Anchor;
+      if (ra && (ra.selector || ra.dataComment)) out.push({ id: r.id, anchor: ra });
+    }
+  }
+  return out;
 }
 
 export function ProjectViewer({ projectId }: { projectId: string }) {
@@ -73,8 +89,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [focusedAnchorKey, setFocusedAnchorKey] = useState<string | null>(null);
+  const [anchorResolvedMap, setAnchorResolvedMap] = useState<Record<string, boolean>>({});
 
   useProjectSSE(projectId);
+
+  useEffect(() => {
+    if (htmlLoading) setAnchorResolvedMap({});
+  }, [htmlLoading]);
 
   useEffect(() => {
     if (!files?.length) return;
@@ -130,6 +151,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
     return Array.from(grouped.values());
   }, [comments]);
+
+  const anchorResolutionItems = useMemo(
+    () => flattenCommentAnchorsForResolution(comments),
+    [comments],
+  );
+
+  const handleAnchorResolution = useCallback((resolved: Record<string, boolean>) => {
+    setAnchorResolvedMap(resolved);
+  }, []);
 
   const sendHighlight = useCallback((a: Anchor | null) => {
     const win = iframeRef.current?.contentWindow;
@@ -242,21 +272,23 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }
 
   return (
+    <TooltipProvider delayDuration={400}>
     <SidebarProvider
       open={commentsOpen}
       onOpenChange={setCommentsOpen}
       style={{ "--sidebar-width": "22.5rem" } as CSSProperties}
     >
-      <SidebarInset className="h-[100dvh] overflow-hidden bg-background">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-        <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
+      <SidebarInset className="h-dvh overflow-hidden bg-background">
+        <header className="relative flex h-14 shrink-0 items-center border-b border-border bg-background px-3 md:px-4">
+        <div className="flex min-w-0 max-w-[min(100%,14rem)] items-center gap-2 sm:max-w-[min(100%,20rem)] md:max-w-[40%]">
+        <Button variant="ghost" size="icon" className="size-9 shrink-0" asChild>
           <Link href="/" aria-label="Back">
             <ArrowLeft className="size-4" />
           </Link>
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-sm font-semibold">{project?.name ?? "Project"}</h1>
+            <h1 className="truncate text-sm font-semibold tracking-tight">{project?.name ?? "Project"}</h1>
             {project?.company?.name ? (
               <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">
                 {project.company.name}
@@ -264,31 +296,49 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             ) : null}
           </div>
         </div>
+        </div>
         {files && files.length > 1 ? (
-          <div className="hidden max-w-[40%] overflow-x-auto md:block">
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 hidden max-w-[min(100vw-12rem,28rem)] -translate-x-1/2 -translate-y-1/2 md:block">
+            <div className="pointer-events-auto overflow-x-auto">
             <Tabs value={fileId ?? ""} onValueChange={setFileId}>
-              <TabsList className="h-8">
+              <TabsList className="h-9 gap-0.5 rounded-lg bg-muted/80 p-1">
                 {files.map((f) => (
-                  <TabsTrigger key={f.id} value={f.id} className="max-w-[140px] truncate px-2 text-xs">
+                  <TabsTrigger
+                    key={f.id}
+                    value={f.id}
+                    className="max-w-[160px] shrink truncate rounded-md px-3 text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                  >
                     {f.path.split("/").pop() ?? f.path}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
+            </div>
           </div>
         ) : null}
-        <Button variant="outline" size="sm" className="inline-flex" onClick={() => void onSync()}>
-          <RefreshCw className="size-4" />
-          <span className="hidden sm:inline">Sync</span>
-        </Button>
-        <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={copyShare}>
-          <Share2 className="size-4" />
-          Share
-        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" size="icon" className="size-9" onClick={() => void onSync()}>
+              <RefreshCw className="size-4" />
+              <span className="sr-only">Sync files from repository</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Sync files</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" size="icon" className="size-9" onClick={copyShare}>
+              <Share2 className="size-4" />
+              <span className="sr-only">Copy link</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Copy share link</TooltipContent>
+        </Tooltip>
         {isMobile ? (
           <Sheet open={mobileSheet} onOpenChange={setMobileSheet}>
             <SheetTrigger asChild>
-              <Button size="icon" variant="outline" className="shrink-0 lg:hidden">
+              <Button size="icon" variant="outline" className="size-9 shrink-0 lg:hidden">
                 <MessageCircle className="size-4" />
               </Button>
             </SheetTrigger>
@@ -312,21 +362,26 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 focusedAnchorKey={focusedAnchorKey}
                 onClearFocus={() => setFocusedAnchorKey(null)}
                 onClose={() => setMobileSheet(false)}
+                anchorResolvedMap={anchorResolvedMap}
               />
             </SheetContent>
           </Sheet>
         ) : (
           <SidebarTrigger
-            className="hidden lg:inline-flex"
+            className="hidden size-9 lg:inline-flex"
             aria-label="Toggle comments sidebar"
           />
         )}
+        </div>
       </header>
 
       {files && files.length > 1 ? (
         <div className="border-b border-border px-3 py-2 md:hidden">
-          <label className="mb-1 block text-xs text-muted-foreground">File</label>
+          <label htmlFor="viewer-file-select" className="mb-1 block text-xs text-muted-foreground">
+            File
+          </label>
           <select
+            id="viewer-file-select"
             className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             value={fileId ?? ""}
             onChange={(e) => setFileId(e.target.value)}
@@ -340,8 +395,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-        <div className="flex min-h-0 flex-1">
-          <div className="relative min-w-0 flex-1 p-3">
+        <div className="flex min-h-0 flex-1 bg-[#ececec] dark:bg-muted/40">
+          <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col p-3 md:p-4">
           {filesLoading ? (
             <p className="text-sm text-muted-foreground">Loading files…</p>
           ) : !files?.length ? (
@@ -354,13 +409,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               error={htmlError}
               commentAnchors={commentAnchors}
               commentPins={commentPins}
+              anchorResolutionItems={anchorResolutionItems}
+              onAnchorResolution={handleAnchorResolution}
             />
           )}
           </div>
         </div>
       </SidebarInset>
       {!isMobile ? (
-        <Sidebar side="right" collapsible="offcanvas" className="top-12 border-l border-border">
+        <Sidebar side="right" collapsible="offcanvas" className="top-14 border-l border-border">
           <SidebarContent>
             <CommentsSidebar
               comments={comments}
@@ -380,11 +437,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               activeThreadId={activeThreadId}
               focusedAnchorKey={focusedAnchorKey}
               onClearFocus={() => setFocusedAnchorKey(null)}
+              anchorResolvedMap={anchorResolvedMap}
             />
           </SidebarContent>
           <SidebarRail />
         </Sidebar>
       ) : null}
     </SidebarProvider>
+    </TooltipProvider>
   );
 }

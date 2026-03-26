@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import type { Anchor } from "@/types";
 
 const BRIDGE_SCRIPT = `
@@ -101,8 +102,8 @@ const BRIDGE_SCRIPT = `
       if (!node || seen.has(node)) continue;
       seen.add(node);
       pinnedNodes.push(node);
-      node.style.outline = "2px solid rgba(249,115,22,0.95)";
-      node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(249,115,22,0.35)";
+      node.style.outline = "2px solid rgba(13,153,255,0.85)";
+      node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(13,153,255,0.28)";
     }
   }
   function pinPositionTarget(el){
@@ -134,13 +135,13 @@ const BRIDGE_SCRIPT = `
       pin.style.height = "20px";
       pin.style.borderRadius = "999px";
       pin.style.border = "none";
-      pin.style.background = "#f97316";
+      pin.style.background = "#0D99FF";
       pin.style.color = "#fff";
       pin.style.font = "600 11px/20px ui-sans-serif, system-ui, sans-serif";
       pin.style.textAlign = "center";
       pin.style.cursor = "pointer";
       pin.style.zIndex = "2147483647";
-      pin.style.boxShadow = "0 0 0 2px #fff, 0 0 0 5px rgba(249,115,22,0.32)";
+      pin.style.boxShadow = "0 0 0 2px #fff, 0 0 0 5px rgba(13,153,255,0.35)";
       pin.textContent = String(row.count || 1);
       pin.addEventListener("click", function(evt){
         evt.preventDefault();
@@ -160,11 +161,13 @@ const BRIDGE_SCRIPT = `
   document.addEventListener("mouseover", function(e){
     var t = e.target;
     if (!t || !t.style) return;
-    t.style.outline = "2px solid rgba(99,102,241,0.35)";
+    if (t.dataset && t.dataset.commentPin === "1") return;
+    t.style.outline = "1px solid rgba(13,153,255,0.28)";
   });
   document.addEventListener("mouseout", function(e){
     var t = e.target;
     if (!t || !t.style) return;
+    if (t.dataset && t.dataset.commentPin === "1") return;
     t.style.outline = "";
   });
   document.addEventListener("click", function(e){
@@ -196,14 +199,27 @@ const BRIDGE_SCRIPT = `
       refreshCommentOverlays();
       return;
     }
+    if (e.data.type === "CHECK_ANCHOR_RESOLUTION") {
+      var items = Array.isArray(e.data.items) ? e.data.items : [];
+      var resolved = {};
+      for (var j = 0; j < items.length; j++) {
+        var item = items[j];
+        if (!item || !item.id) continue;
+        var anch = item.anchor;
+        if (!anch || (!anch.selector && !anch.dataComment)) continue;
+        resolved[item.id] = resolveAnchor(anch) !== null;
+      }
+      window.parent.postMessage({ type: "ANCHOR_RESOLUTION_RESULT", resolved: resolved }, "*");
+      return;
+    }
     if (e.data.type === "HIGHLIGHT_ELEMENT") {
       clearActive();
       var anchor = e.data.anchor;
       var node = resolveAnchor(anchor);
       if (node) {
         node.scrollIntoView({ behavior: "smooth", block: "center" });
-        node.style.outline = "2px solid #6366F1";
-        node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(99,102,241,0.45)";
+        node.style.outline = "2px solid #0066FF";
+        node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(0,102,255,0.38)";
         activeNode = node;
       }
     }
@@ -234,9 +250,14 @@ export const HtmlFrame = forwardRef<
     error: string | null;
     commentAnchors: Anchor[];
     commentPins: { commentId: string; anchor: Anchor; count: number; anchorKey: string }[];
+    anchorResolutionItems?: { id: string; anchor: Anchor }[];
+    onAnchorResolution?: (resolved: Record<string, boolean>) => void;
   }
 >(
-  function HtmlFrame({ html, loading, error, commentAnchors, commentPins }, ref) {
+  function HtmlFrame(
+    { html, loading, error, commentAnchors, commentPins, anchorResolutionItems = [], onAnchorResolution },
+    ref,
+  ) {
   const localRef = useRef<HTMLIFrameElement | null>(null);
   const [frameReady, setFrameReady] = useState(false);
   useImperativeHandle(ref, () => localRef.current as HTMLIFrameElement);
@@ -259,32 +280,76 @@ export const HtmlFrame = forwardRef<
     win.postMessage({ type: "SET_COMMENT_PINS", pins: commentPins }, "*");
   }, [commentPins, frameReady]);
 
+  useEffect(() => {
+    if (!frameReady) return;
+    const win = localRef.current?.contentWindow;
+    if (!win) return;
+
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type !== "ANCHOR_RESOLUTION_RESULT" || !e.data.resolved || typeof e.data.resolved !== "object") {
+        return;
+      }
+      onAnchorResolution?.(e.data.resolved as Record<string, boolean>);
+    }
+    window.addEventListener("message", onMsg);
+
+    if (!anchorResolutionItems.length) {
+      onAnchorResolution?.({});
+    } else {
+      win.postMessage({ type: "CHECK_ANCHOR_RESOLUTION", items: anchorResolutionItems }, "*");
+    }
+
+    return () => window.removeEventListener("message", onMsg);
+  }, [frameReady, anchorResolutionItems, onAnchorResolution]);
+
+  const artboardChrome = cn(
+    "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-md ring-1 ring-black/5 dark:bg-card dark:ring-white/10",
+  );
+
   if (loading) {
-    return <Skeleton className="h-full min-h-[400px] w-full rounded-lg" />;
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className={artboardChrome}>
+          <Skeleton className="h-full min-h-[min(70dvh,520px)] w-full rounded-none" />
+        </div>
+      </div>
+    );
   }
   if (error) {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
-        {error}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className={artboardChrome}>
+          <div className="flex h-full min-h-[min(50dvh,320px)] items-center justify-center border-t border-destructive/20 bg-destructive/5 p-6 text-sm text-destructive">
+            {error}
+          </div>
+        </div>
       </div>
     );
   }
   if (!srcDoc) {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-        Select a file to preview
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className={artboardChrome}>
+          <div className="flex h-full min-h-[min(50dvh,320px)] items-center justify-center border border-dashed border-border/80 text-sm text-muted-foreground">
+            Select a file to preview
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <iframe
-      ref={localRef}
-      title="HTML preview"
-      srcDoc={srcDoc}
-      sandbox="allow-scripts allow-same-origin"
-      className="h-full min-h-0 w-full flex-1 rounded-lg border border-border bg-white"
-      onLoad={() => setFrameReady(true)}
-    />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className={artboardChrome}>
+        <iframe
+          ref={localRef}
+          title="HTML preview"
+          srcDoc={srcDoc}
+          sandbox="allow-scripts allow-same-origin"
+          className="block h-full min-h-[min(70dvh,520px)] w-full flex-1 border-0 bg-white"
+          onLoad={() => setFrameReady(true)}
+        />
+      </div>
+    </div>
   );
 });

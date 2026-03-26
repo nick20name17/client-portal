@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { FolderOpen, Plus } from "lucide-react";
 
 import { ProjectCard } from "@/components/dashboard/ProjectCard";
 import { StatsWidget } from "@/components/dashboard/StatsWidget";
@@ -53,12 +53,13 @@ export default function DashboardPage() {
           </h2>
           {isPending ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <Skeleton className="h-48 rounded-xl" />
-              <Skeleton className="h-48 rounded-xl" />
-              <Skeleton className="h-48 rounded-xl" />
+              <Skeleton className="h-52 rounded-xl" />
+              <Skeleton className="h-52 rounded-xl" />
+              <Skeleton className="h-52 rounded-xl" />
             </div>
           ) : !projects?.length ? (
             <EmptyState
+              icon={FolderOpen}
               title="No projects yet"
               description={
                 isAdmin

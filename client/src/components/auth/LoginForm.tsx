@@ -29,11 +29,14 @@ export function LoginForm() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
+  const [email, password] = watch(["email", "password"]);
+  const isEmpty = !email?.trim() || !password;
 
   async function onSubmit(values: LoginValues) {
     setApiError(null);
@@ -51,11 +54,6 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Welcome back</h1>
-        <p className="text-sm text-muted-foreground">Sign in to your account</p>
-      </div>
-
       {apiError ? (
         <Alert variant="destructive">
           <AlertDescription>{apiError}</AlertDescription>
@@ -86,7 +84,7 @@ export function LoginForm() {
         {...register("password")}
       />
 
-      <Button type="submit" variant="default" className="h-10 w-full gap-2" disabled={isSubmitting}>
+      <Button type="submit" variant="default" className="h-10 w-full gap-2" disabled={isSubmitting || isEmpty}>
         {isSubmitting ? (
           <>
             <Loader2 className="size-4 animate-spin" aria-hidden />

@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { AlertTriangle, Link2, Reply } from "lucide-react";
+import { AlertTriangle, CheckCircle, Link2, Reply, RotateCcw } from "lucide-react";
 
 import { ResolvedBadge } from "@/components/comments/ResolvedBadge";
 import { TagBadge } from "@/components/comments/TagBadge";
@@ -9,11 +9,6 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Anchor, Comment } from "@/types";
-
-function isOrphanAnchor(anchor: Anchor | undefined) {
-  if (!anchor) return true;
-  return !anchor.selector && !anchor.dataComment;
-}
 
 function hasAssignedAnchor(anchor: Anchor | undefined) {
   if (!anchor) return false;
@@ -27,6 +22,7 @@ export function CommentItem({
   onResolve,
   onHover,
   activeThreadId,
+  anchorResolvedMap,
 }: {
   comment: Comment;
   depth: number;
@@ -34,24 +30,29 @@ export function CommentItem({
   onResolve: (id: string, resolved: boolean) => void;
   onHover: (anchor: Anchor | null) => void;
   activeThreadId: string | null;
+  /** Per-comment id: iframe DOM check — true = node found, false = was attached but missing from current HTML */
+  anchorResolvedMap?: Record<string, boolean>;
 }) {
   const authorName = comment.author?.name ?? "Unknown";
   const authorImage = comment.author?.image ?? null;
-  const isOrphan = isOrphanAnchor(comment.anchor as Anchor);
+  const anchorResolved = anchorResolvedMap?.[comment.id];
   const isAssigned = hasAssignedAnchor(comment.anchor as Anchor);
+  const elementMissing = isAssigned && anchorResolved === false;
+  const showAttachedBadge = isAssigned && anchorResolved === true;
   const isActiveThread = depth === 0 && activeThreadId === comment.id;
 
   return (
     <div
       className={cn(
         "rounded-lg border border-border bg-card p-3 shadow-sm transition-shadow",
-        isActiveThread && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+        isActiveThread &&
+          "ring-2 ring-blue-500/70 ring-offset-2 ring-offset-background dark:ring-blue-400/60",
       )}
       data-comment-root-id={depth === 0 ? comment.id : undefined}
       style={{
         marginLeft: depth > 0 ? 12 : 0,
         borderLeftWidth: 3,
-        borderLeftColor: comment.resolved ? "var(--status-resolved)" : "oklch(0.577 0.245 27.325 / 40%)",
+        borderLeftColor: comment.resolved ? "var(--status-resolved)" : "rgba(13, 153, 255, 0.45)",
       }}
       onMouseEnter={() => onHover(comment.anchor as Anchor)}
       onMouseLeave={() => onHover(null)}
@@ -74,14 +75,14 @@ export function CommentItem({
         </div>
         <ResolvedBadge resolved={comment.resolved} />
       </div>
-      {isAssigned ? (
-        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2.5 py-1 text-[11px] font-medium text-orange-800">
+      {showAttachedBadge ? (
+        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-blue-200/90 bg-blue-50/90 px-2.5 py-1 text-[11px] font-medium text-blue-900 dark:border-blue-500/35 dark:bg-blue-500/10 dark:text-blue-100">
           <Link2 className="size-3.5" />
           Highlighted part attached
         </div>
       ) : null}
-      {isOrphan ? (
-        <p className="mt-2 flex items-center gap-1 text-xs text-amber-700">
+      {elementMissing ? (
+        <p className="mt-2 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-500/90">
           <AlertTriangle className="size-3.5 shrink-0" />
           Element not found in current version
         </p>
@@ -94,17 +95,19 @@ export function CommentItem({
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {depth === 0 ? (
-          <Button variant="outline" size="sm" onClick={() => onReply(comment.id)}>
+          <Button variant="ghost" size="sm" onClick={() => onReply(comment.id)}>
             <Reply className="size-3.5" />
             Reply
           </Button>
         ) : null}
         {!comment.resolved ? (
-          <Button variant="secondary" size="sm" onClick={() => onResolve(comment.id, true)}>
+          <Button variant="outline" size="sm" className="text-(--status-resolved) hover:text-(--status-resolved)" onClick={() => onResolve(comment.id, true)}>
+            <CheckCircle className="size-3.5" />
             Resolve
           </Button>
         ) : (
           <Button variant="ghost" size="sm" onClick={() => onResolve(comment.id, false)}>
+            <RotateCcw className="size-3.5" />
             Reopen
           </Button>
         )}
@@ -120,6 +123,7 @@ export function CommentItem({
               onResolve={onResolve}
               onHover={onHover}
               activeThreadId={activeThreadId}
+              anchorResolvedMap={anchorResolvedMap}
             />
           ))}
         </div>

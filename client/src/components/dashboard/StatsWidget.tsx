@@ -1,15 +1,17 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
+import { CheckCircle2, FolderKanban, MessageCircle, TrendingUp, Users2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import type { DashboardStats } from "@/types";
 
 export function StatsWidget({ stats, loading }: { stats?: DashboardStats; loading?: boolean }) {
   if (loading || !stats) {
     return (
-      <Card className="shadow-[var(--shadow-card)]">
+      <Card className="shadow-(--shadow-card)">
         <CardHeader>
           <Skeleton className="h-5 w-32" />
         </CardHeader>
@@ -26,36 +28,26 @@ export function StatsWidget({ stats, loading }: { stats?: DashboardStats; loadin
     stats.totalComments > 0 ? Math.round((stats.resolvedComments / stats.totalComments) * 100) : 0;
 
   return (
-    <Card className="shadow-[var(--shadow-card)]">
+    <Card className="shadow-(--shadow-card)">
       <CardHeader>
         <CardTitle className="text-base">Overview</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <ul className="space-y-2 text-muted-foreground">
-          <li className="flex justify-between gap-2">
-            <span>Total comments</span>
-            <span className="font-medium text-foreground">{stats.totalComments}</span>
-          </li>
-          <li className="flex justify-between gap-2">
-            <span>Resolved</span>
-            <span className="font-medium text-foreground">
-              {stats.resolvedComments}{" "}
-              <span className="text-muted-foreground">({resolvedPct}%)</span>
-            </span>
-          </li>
-          <li className="flex justify-between gap-2">
-            <span>Open</span>
-            <span className="font-medium text-foreground">{stats.openComments}</span>
-          </li>
-          <li className="flex justify-between gap-2">
-            <span>Projects</span>
-            <span className="font-medium text-foreground">{stats.projects}</span>
-          </li>
-          <li className="flex justify-between gap-2">
-            <span>Users</span>
-            <span className="font-medium text-foreground">{stats.users}</span>
-          </li>
-        </ul>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { icon: MessageCircle, label: "Total", value: stats.totalComments, color: "text-primary" },
+            { icon: CheckCircle2, label: "Resolved", value: `${stats.resolvedComments} (${resolvedPct}%)`, color: "text-[var(--status-resolved)]" },
+            { icon: TrendingUp, label: "Open", value: stats.openComments, color: "text-amber-600" },
+            { icon: FolderKanban, label: "Projects", value: stats.projects, color: "text-blue-600" },
+            { icon: Users2, label: "Users", value: stats.users, color: "text-purple-600" },
+          ].map(({ icon: StatIcon, label, value, color }) => (
+            <div key={label} className="rounded-lg bg-muted/50 p-3">
+              <StatIcon className={cn("mb-1.5 size-4", color)} />
+              <p className="text-xl font-semibold leading-none">{value}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+            </div>
+          ))}
+        </div>
         <div className="border-t border-border pt-3">
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Recent activity

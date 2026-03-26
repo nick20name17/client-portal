@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
-import { MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Building2, Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { RoleGate } from "@/components/shared/RoleGate";
@@ -136,12 +136,14 @@ function CompaniesContent() {
         <CardContent className="px-0">
           {isPending ? (
             <div className="space-y-2 px-6">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
             </div>
           ) : filtered.length === 0 ? (
             <div className="px-6 pb-6">
               <EmptyState
+                icon={Building2}
                 title={q ? "No matches" : "No companies yet"}
                 description={q ? "Try a different search." : "Create your first company to attach projects and users."}
               >
@@ -220,6 +222,7 @@ function CompaniesContent() {
               Cancel
             </Button>
             <Button onClick={() => void save()} disabled={create.isPending || update.isPending}>
+              {(create.isPending || update.isPending) ? <Loader2 className="size-4 animate-spin" /> : null}
               Save
             </Button>
           </DialogFooter>

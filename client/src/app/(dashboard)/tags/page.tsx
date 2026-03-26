@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Tags as TagsIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { RoleGate } from "@/components/shared/RoleGate";
@@ -118,11 +118,12 @@ function TagsContent() {
         <CardContent>
           {isPending ? (
             <div className="space-y-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
             </div>
           ) : !data?.length ? (
-            <EmptyState title="No tags yet" description="Create tags to categorize feedback.">
+            <EmptyState icon={TagsIcon} title="No tags yet" description="Create tags to categorize feedback.">
               <Button onClick={openCreate}>Create tag</Button>
             </EmptyState>
           ) : (
@@ -192,6 +193,7 @@ function TagsContent() {
               Cancel
             </Button>
             <Button onClick={() => void save()} disabled={create.isPending || update.isPending}>
+              {(create.isPending || update.isPending) ? <Loader2 className="size-4 animate-spin" /> : null}
               Save
             </Button>
           </DialogFooter>

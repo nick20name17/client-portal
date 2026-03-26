@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ExternalLink, FolderKanban, MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { ExternalLink, FolderKanban, Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { ProjectMembersSheet } from "@/components/projects/ProjectMembersSheet";
@@ -93,6 +93,7 @@ function ProjectsContent() {
   });
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [membersProjectId, setMembersProjectId] = useState<string | null>(null);
+  const [syncProjectId, setSyncProjectId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -165,15 +166,7 @@ function ProjectsContent() {
           companyId: cid,
         });
         toast.success("Project created");
-        const syncNow = window.confirm("Sync HTML files from GitHub now?");
-        if (syncNow) {
-          try {
-            const r = await sync.mutateAsync(created.id);
-            toast.success(`Synced ${r.synced} file(s)`);
-          } catch (e) {
-            toast.error(e instanceof ApiError ? e.message : "Sync failed");
-          }
-        }
+        setSyncProjectId(created.id);
       }
       setDialogOpen(false);
     } catch (e) {
@@ -239,12 +232,13 @@ function ProjectsContent() {
         <CardContent className="px-0">
           {isPending ? (
             <div className="space-y-2 px-6">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
             </div>
           ) : filtered.length === 0 ? (
             <div className="px-6 pb-6">
-              <EmptyState title="No projects" description="Create a project linked to a GitHub repo.">
+              <EmptyState icon={FolderKanban} title="No projects" description="Create a project linked to a GitHub repo.">
                 <Button onClick={openCreate}>
                   <FolderKanban className="size-4" />
                   New project
@@ -372,6 +366,7 @@ function ProjectsContent() {
               Cancel
             </Button>
             <Button onClick={() => void save()} disabled={create.isPending || update.isPending}>
+              {(create.isPending || update.isPending) ? <Loader2 className="size-4 animate-spin" /> : null}
               Save
             </Button>
           </DialogFooter>
@@ -383,6 +378,29 @@ function ProjectsContent() {
         open={!!membersProjectId}
         onOpenChange={(o) => !o && setMembersProjectId(null)}
       />
+
+      <AlertDialog open={!!syncProjectId} onOpenChange={(o) => !o && setSyncProjectId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sync HTML files?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pull the latest HTML files from GitHub now? You can also sync later from the project menu.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSyncProjectId(null)}>Later</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              const id = syncProjectId;
+              setSyncProjectId(null);
+              if (id) {
+                void sync.mutateAsync(id).then((r) => toast.success(`Synced ${r.synced} file(s)`)).catch((e: Error) => toast.error(e.message ?? "Sync failed"));
+              }
+            }}>
+              Sync now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>

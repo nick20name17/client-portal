@@ -26,8 +26,8 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { RoleBadge } from "@/components/shared/RoleBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import { Button } from "@/components/ui/button";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
@@ -69,7 +69,7 @@ export function AppSidebar() {
             <UserAvatar name={user.name ?? user.email ?? "?"} />
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
               <p className="truncate text-sm font-medium">{user.name ?? "User"}</p>
-              <p className="truncate text-xs text-muted-foreground capitalize">{role ?? "—"}</p>
+              {role ? <RoleBadge role={role as import("@/types").Role} /> : null}
             </div>
           </div>
         ) : null}
@@ -123,10 +123,10 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <Button variant="ghost" className="w-full justify-start gap-2 px-2" onClick={() => void signOut()}>
+            <SidebarMenuButton onClick={() => void signOut()} className="text-muted-foreground hover:text-foreground">
               <LogOut className="size-4" />
               <span>Sign out</span>
-            </Button>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
