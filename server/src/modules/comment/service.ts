@@ -15,13 +15,11 @@ async function assertFileAccess(
         with: { members: true },
     });
 
-    if (!project)
-        throw status(404, { message: "File not found" } as const);
+    if (!project) throw status(404, { message: "File not found" } as const);
 
     if (role !== "admin") {
         const isMember = project.members.some((m) => m.userId === userId);
-        if (!isMember)
-            throw status(403, { message: "Forbidden" } as const);
+        if (!isMember) throw status(403, { message: "Forbidden" } as const);
     }
 
     const file = await db.query.projectFiles.findFirst({
@@ -31,19 +29,32 @@ async function assertFileAccess(
         ),
     });
 
-    if (!file)
-        throw status(404, { message: "File not found" } as const);
+    if (!file) throw status(404, { message: "File not found" } as const);
 
     return file;
 }
 
 export const CommentService = {
-    async getAll(projectId: number, fileId: number, userId: string, role: string) {
+    async getAll(
+        projectId: number,
+        fileId: number,
+        userId: string,
+        role: string,
+    ) {
         await assertFileAccess(projectId, fileId, userId, role);
 
         return db.query.comments.findMany({
             where: eq(comments.fileId, fileId),
-            with: { replies: true },
+            with: {
+                author: { columns: { id: true, name: true, image: true } },
+                replies: {
+                    with: {
+                        author: {
+                            columns: { id: true, name: true, image: true },
+                        },
+                    },
+                },
+            },
         });
     },
 
@@ -121,11 +132,7 @@ export const CommentService = {
         await db.delete(comments).where(eq(comments.id, id));
     },
 
-    async createReply(
-        commentId: number,
-        userId: string,
-        content: string,
-    ) {
+    async createReply(commentId: number, userId: string, content: string) {
         const comment = await db.query.comments.findFirst({
             where: eq(comments.id, commentId),
             with: { replies: true },
@@ -166,13 +173,17 @@ export const CommentService = {
         return reply;
     },
 
-    async updateReply(id: number, userId: string, role: string, content: string) {
+    async updateReply(
+        id: number,
+        userId: string,
+        role: string,
+        content: string,
+    ) {
         const reply = await db.query.replies.findFirst({
             where: eq(replies.id, id),
         });
 
-        if (!reply)
-            throw status(404, { message: "Reply not found" } as const);
+        if (!reply) throw status(404, { message: "Reply not found" } as const);
 
         if (role !== "admin" && reply.authorId !== userId)
             throw status(403, { message: "Forbidden" } as const);
@@ -191,8 +202,7 @@ export const CommentService = {
             where: eq(replies.id, id),
         });
 
-        if (!reply)
-            throw status(404, { message: "Reply not found" } as const);
+        if (!reply) throw status(404, { message: "Reply not found" } as const);
 
         if (role !== "admin" && reply.authorId !== userId)
             throw status(403, { message: "Forbidden" } as const);

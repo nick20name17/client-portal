@@ -1,10 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { use, useEffect, useState } from "react";
+import { fileQueryOptions } from "@/api/files/queries";
 import { CommentOverlay } from "@/components/comment-overlay";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fileQueryOptions } from "@/api/files/queries";
+import { useQuery } from "@tanstack/react-query";
+import { use, useEffect, useState } from "react";
 
 export default function FileViewerPage({
     params,

@@ -1,5 +1,11 @@
 import { apiClient } from "@/api/client";
 
+export type CommentAuthor = {
+    id: string;
+    name: string;
+    image: string | null;
+};
+
 export type Reply = {
     id: number;
     commentId: number;
@@ -7,6 +13,7 @@ export type Reply = {
     content: string;
     createdAt: string;
     updatedAt: string;
+    author: CommentAuthor;
 };
 
 export type Comment = {
@@ -18,6 +25,7 @@ export type Comment = {
     content: string;
     createdAt: string;
     updatedAt: string;
+    author: CommentAuthor;
     replies: Reply[];
 };
 

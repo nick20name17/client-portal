@@ -22,7 +22,6 @@ export const commentModule = new Elysia({
         {
             params: CommentModelSchema.fileParams,
             response: {
-                200: t.Array(CommentModelSchema.commentWithReplies),
                 403: CommentModelSchema.forbidden,
                 404: CommentModelSchema.fileNotFound,
             },
@@ -54,7 +53,12 @@ export const commentModule = new Elysia({
     .patch(
         "/comments/:id",
         async ({ user, params: { id }, body }) =>
-            CommentService.update(id, user.id, user.role as string, body.content),
+            CommentService.update(
+                id,
+                user.id,
+                user.role as string,
+                body.content,
+            ),
         {
             params: CommentModelSchema.commentParams,
             body: CommentModelSchema.updateComment,

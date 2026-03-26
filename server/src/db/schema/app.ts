@@ -139,19 +139,16 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     files: many(projectFiles),
 }));
 
-export const projectMembersRelations = relations(
-    projectMembers,
-    ({ one }) => ({
-        project: one(projects, {
-            fields: [projectMembers.projectId],
-            references: [projects.id],
-        }),
-        user: one(user, {
-            fields: [projectMembers.userId],
-            references: [user.id],
-        }),
+export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
+    project: one(projects, {
+        fields: [projectMembers.projectId],
+        references: [projects.id],
     }),
-);
+    user: one(user, {
+        fields: [projectMembers.userId],
+        references: [user.id],
+    }),
+}));
 
 export const projectFilesRelations = relations(
     projectFiles,

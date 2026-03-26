@@ -1,19 +1,19 @@
 "use client";
 
+import { syncFilesFromGithub } from "@/api/files/mutations";
+import { fileKeys, filesQueryOptions } from "@/api/files/queries";
+import { projectQueryOptions } from "@/api/projects/queries";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { pageShellClass } from "@/lib/page-shell";
+import { cn } from "@/lib/utils";
+import { queryClient } from "@/providers/react-query";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { FileIcon, RefreshCwIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { use } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { syncFilesFromGithub } from "@/api/files/mutations";
-import { fileKeys, filesQueryOptions } from "@/api/files/queries";
-import { projectQueryOptions } from "@/api/projects/queries";
-import { queryClient } from "@/providers/react-query";
-import { pageShellClass } from "@/lib/page-shell";
-import { cn } from "@/lib/utils";
 
 export default function ProjectDetailPage({
     params,
@@ -72,8 +72,7 @@ export default function ProjectDetailPage({
                     size="sm"
                     variant="outline"
                     disabled={syncMutation.isPending || filesLoading}
-                    onClick={() => syncMutation.mutate()}
-                >
+                    onClick={() => syncMutation.mutate()}>
                     <RefreshCwIcon
                         className={cn(
                             "size-4",
@@ -104,8 +103,7 @@ export default function ProjectDetailPage({
                         size="sm"
                         variant="secondary"
                         disabled={syncMutation.isPending}
-                        onClick={() => syncMutation.mutate()}
-                    >
+                        onClick={() => syncMutation.mutate()}>
                         <RefreshCwIcon className="size-4" />
                         Sync from GitHub
                     </Button>
@@ -130,8 +128,7 @@ export default function ProjectDetailPage({
                                         active
                                             ? "bg-primary text-primary-foreground"
                                             : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
-                                    )}
-                                >
+                                    )}>
                                     {file.path}
                                 </Link>
                             );
