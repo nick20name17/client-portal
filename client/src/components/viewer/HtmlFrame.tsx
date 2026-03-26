@@ -78,11 +78,6 @@ const BRIDGE_SCRIPT = `
     if (interactionMode !== "commenting") return;
     var el = e.target;
     if (!el || el.nodeType !== 1) return;
-    var rect = el.getBoundingClientRect();
-    var relX = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
-    var relY = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
-    relX = Math.max(0, Math.min(1, relX));
-    relY = Math.max(0, Math.min(1, relY));
     e.preventDefault();
     e.stopPropagation();
     window.parent.postMessage({
@@ -92,9 +87,7 @@ const BRIDGE_SCRIPT = `
         selector: simpleSelector(el),
         textContent: el.textContent ? el.textContent.trim().slice(0, 100) : null,
         tagName: el.tagName,
-        xpath: getXPath(el),
-        relativeX: relX,
-        relativeY: relY
+        xpath: getXPath(el)
       }
     }, "*");
   }, true);
@@ -143,21 +136,9 @@ const BRIDGE_SCRIPT = `
         var node = resolveAnchor(c.anchor);
         if (node) {
           var rect = node.getBoundingClientRect();
-          var ax = 0.5;
-          var ay = 0.5;
-          if (c.anchor && typeof c.anchor.relativeX === "number" && isFinite(c.anchor.relativeX)) {
-            ax = Math.max(0, Math.min(1, c.anchor.relativeX));
-          }
-          if (c.anchor && typeof c.anchor.relativeY === "number" && isFinite(c.anchor.relativeY)) {
-            ay = Math.max(0, Math.min(1, c.anchor.relativeY));
-          }
-          var pinX = rect.left + rect.width * ax;
-          var pinY = rect.top + rect.height * ay;
           // Clamp to visible viewport; elements scrolled out of view are still
           // reported at their viewport-relative position (may be negative).
           positions[c.id] = {
-            x: pinX,
-            y: pinY,
             left: rect.left,
             top: rect.top,
             width: rect.width,

@@ -49,8 +49,6 @@ export interface Anchor {
   textContent: string | null;
   tagName: string;
   xpath: string;
-  relativeX?: number;
-  relativeY?: number;
 }
 
 export interface Tag {

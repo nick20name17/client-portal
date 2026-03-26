@@ -52,8 +52,6 @@ const emptyAnchor = (): Anchor => ({
   textContent: null,
   tagName: "DIV",
   xpath: "",
-  relativeX: 0.5,
-  relativeY: 0.5,
 });
 
 function flattenCommentAnchorsForResolution(comments: Comment[] | undefined): { id: string; anchor: Anchor }[] {
@@ -250,25 +248,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       ) {
         const raw = e.data.positions as Record<
           string,
-          {
-            x?: number;
-            y?: number;
-            left: number;
-            top: number;
-            width: number;
-            height: number;
-            scrollWidth: number;
-            scrollHeight: number;
-          }
+          { left: number; top: number; width: number; height: number; scrollWidth: number; scrollHeight: number }
         >;
         const next: Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }> = {};
         for (const id of Object.keys(raw)) {
           const p = raw[id];
-          const cx = typeof p.x === "number" ? p.x : p.left + p.width / 2;
-          const cy = typeof p.y === "number" ? p.y : p.top + p.height / 2;
           next[id] = {
-            cx,
-            cy,
+            cx: p.left + p.width / 2,
+            cy: p.top + p.height / 2,
             scrollWidth: p.scrollWidth,
             scrollHeight: p.scrollHeight,
           };
@@ -493,15 +480,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         const anchor = pendingGhostAnchorRef.current;
         if (!anchor) return;
         const pos = e.data.positions.__ghost__ as {
-          x?: number; y?: number; left: number; top: number; width: number; height: number;
+          left: number; top: number; width: number; height: number;
           scrollWidth: number; scrollHeight: number;
         };
         pendingGhostAnchorRef.current = null;
-        const cx = typeof pos.x === "number" ? pos.x : pos.left + pos.width / 2;
-        const cy = typeof pos.y === "number" ? pos.y : pos.top + pos.height / 2;
         setGhostRaw({
-          cx,
-          cy,
+          cx: pos.left + pos.width / 2,
+          cy: pos.top + pos.height / 2,
           scrollWidth: pos.scrollWidth,
           scrollHeight: pos.scrollHeight,
           anchor,
