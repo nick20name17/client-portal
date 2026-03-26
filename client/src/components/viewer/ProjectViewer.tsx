@@ -458,6 +458,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           typeof e.data.commentId === "string" && e.data.commentId.trim() ? e.data.commentId : null;
         if (existingThreadId) {
           pendingGhostAnchorRef.current = null;
+          setGhostRaw(null);
           setActiveThreadId(existingThreadId);
           const existing = comments?.find((c) => c.id === existingThreadId);
           if (existing) sendHighlight(existing.anchor as Anchor);
@@ -602,6 +603,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }
 
   function onSelectThread(commentId: string) {
+    setGhostRaw(null);
+    pendingGhostAnchorRef.current = null;
+    setCommentMode(false);
     setActiveThreadId((prev) => (prev === commentId ? null : commentId));
     const c = comments?.find((x) => x.id === commentId);
     if (c) sendHighlight(c.anchor as Anchor);
@@ -651,6 +655,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     onSelectThread,
     anchorResolvedMap,
   };
+
+  const showThreadPopover = Boolean(activeThreadId);
+  const showComposePopover = Boolean(ghostPin) && !showThreadPopover;
 
   return (
     <TooltipProvider delayDuration={400}>
@@ -829,7 +836,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       className="pointer-events-none absolute inset-0"
                     >
                       {/* Ghost pin for new comment */}
-                      {ghostPin ? (
+                      {showComposePopover && ghostPin ? (
                         <>
                           <GhostPin x={ghostPin.x} y={ghostPin.y} />
                           <div
@@ -883,10 +890,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
                       {/* Active thread popover — rendered once, sibling to pins so position is relative to overlay */}
                       {(() => {
-                        if (!activeThreadId) return null;
+                        if (!showThreadPopover || !activeThreadId) return null;
                         const activePin = pins.find((p) => p.commentId === activeThreadId);
                         const activeComment = comments?.find((c) => c.id === activeThreadId);
                         if (!activePin || !activeComment) return null;
+                        const flatReplies = (comments ?? []).filter((c) => c.parentId === activeComment.id);
+                        const mergedReplies = [
+                          ...(activeComment.replies ?? []),
+                          ...flatReplies.filter((r) => !(activeComment.replies ?? []).some((x) => x.id === r.id)),
+                        ];
+                        const threadComment = { ...activeComment, replies: mergedReplies };
                         return (
                           <div
                             key={activeThreadId}
@@ -902,7 +915,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                             )}
                           >
                             <InlineThreadPopover
-                              comment={activeComment}
+                              comment={threadComment}
                               currentUser={user}
                               canComment={interactionMode === "commenting"}
                               onClose={() => setActiveThreadId(null)}

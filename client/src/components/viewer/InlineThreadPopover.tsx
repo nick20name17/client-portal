@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNowStrict } from "date-fns";
 import { ArrowRight, CheckCircle, RotateCcw, Trash2, X } from "lucide-react";
 
 import { TagBadge } from "@/components/comments/TagBadge";
@@ -32,23 +32,41 @@ function canDelete(user: User | null, authorId: string): boolean {
   return user.role === "admin" || user.id === authorId;
 }
 
-function ReplyItem({ reply }: { reply: Comment }) {
+function formatRelativeShort(date: Date): string {
+  const raw = formatDistanceToNowStrict(date, { addSuffix: true });
+  return raw
+    .replace(" seconds", " sec")
+    .replace(" second", " sec")
+    .replace(" minutes", " min")
+    .replace(" minute", " min")
+    .replace(" hours", " hr")
+    .replace(" hour", " hr")
+    .replace(" days", " d")
+    .replace(" day", " d")
+    .replace(" months", " mo")
+    .replace(" month", " mo")
+    .replace(" years", " yr")
+    .replace(" year", " yr");
+}
+
+function ThreadMessageItem({ item, isParent = false }: { item: Comment; isParent?: boolean }) {
   const name =
-    reply.author?.name?.trim() ||
-    reply.author?.email?.split("@")[0] ||
-    `user-${reply.authorId.slice(0, 6)}`;
-  const image = reply.author?.image ?? null;
+    item.author?.name?.trim() ||
+    item.author?.email?.split("@")[0] ||
+    `user-${item.authorId.slice(0, 6)}`;
+  const image = item.author?.image ?? null;
+
   return (
-    <div className="flex gap-2 pl-3">
-      <UserAvatar name={name} image={image} className="mt-0.5 size-6 shrink-0" />
+    <div className={cn("flex gap-2.5", !isParent && "pl-2")}>
+      <UserAvatar name={name} image={image} className="mt-0.5 size-8 shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-xs font-medium">{name}</span>
-          <span className="text-[10px] text-muted-foreground">
-            {formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true })}
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-semibold text-foreground">{name}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            {formatRelativeShort(new Date(item.createdAt))}
           </span>
         </div>
-        <p className="mt-0.5 text-xs text-foreground/90">{reply.body}</p>
+        <p className="mt-1.5 whitespace-pre-wrap text-sm text-foreground/95">{item.body}</p>
       </div>
     </div>
   );
@@ -68,12 +86,8 @@ export function InlineThreadPopover({
   const [submitting, setSubmitting] = useState(false);
   const repliesEndRef = useRef<HTMLDivElement>(null);
 
-  const authorName =
-    comment.author?.name?.trim() ||
-    comment.author?.email?.split("@")[0] ||
-    `user-${comment.authorId.slice(0, 6)}`;
-  const authorImage = comment.author?.image ?? null;
   const replies = comment.replies ?? [];
+  const threadItems = [comment, ...replies];
 
   useEffect(() => {
     repliesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -94,113 +108,93 @@ export function InlineThreadPopover({
   return (
     <div
       className={cn(
-        "flex w-80 flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-xl",
-        comment.resolved && "ring-1 ring-[oklch(0.527_0.154_150.069)]/30",
+        "flex w-[340px] flex-col overflow-hidden rounded-[22px] border border-border/80 bg-popover shadow-2xl",
+        comment.resolved && "ring-1 ring-[oklch(0.527_0.154_150.069)]/25",
       )}
     >
-      {/* Header */}
       <div
         className={cn(
-          "flex items-center gap-2 border-b border-border px-3 py-2.5",
-          comment.resolved && "bg-[oklch(0.527_0.154_150.069)]/5",
+          "flex items-center gap-2 border-b border-border/70 px-4 py-3",
+          comment.resolved && "bg-[oklch(0.527_0.154_150.069)]/7",
         )}
       >
-        <UserAvatar name={authorName} image={authorImage} className="size-7 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium leading-tight">{authorName}</p>
-          <p className="text-[10px] text-muted-foreground">
-            {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-          </p>
-        </div>
+        <p className="min-w-0 flex-1 truncate text-[28px] leading-none">💬</p>
+        {canDelete(currentUser, comment.authorId) ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-destructive hover:text-destructive"
+            onClick={() => void onDelete(comment.id)}
+            title="Delete thread"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+          className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={() => void onResolve(comment.id, !comment.resolved)}
+          disabled={!canResolve(currentUser)}
+          title={comment.resolved ? "Unresolve thread" : "Resolve thread"}
+        >
+          {comment.resolved ? <RotateCcw className="size-4" /> : <CheckCircle className="size-4" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
           onClick={onClose}
         >
-          <X className="size-3.5" />
+          <X className="size-4" />
         </Button>
       </div>
 
-      {/* Body */}
-      <div className="space-y-2.5 px-3 py-3">
+      <div className="px-4 pb-2 pt-3">
         {isOrphaned ? (
           <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
             ⚠ Element not found in current version
           </p>
         ) : null}
-        <p className="whitespace-pre-wrap text-sm text-foreground">{comment.body}</p>
         {comment.tags?.length ? (
-          <div className="flex flex-wrap gap-1">
+          <div className="mb-2 flex flex-wrap gap-1.5">
             {comment.tags.map((t) => (
               <TagBadge key={t.id} tag={t} />
             ))}
           </div>
         ) : null}
+      </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1.5 border-t border-border/60 pt-2">
-          {canResolve(currentUser) ? (
-            !comment.resolved ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs text-[oklch(0.527_0.154_150.069)] hover:text-[oklch(0.527_0.154_150.069)]"
-                onClick={() => void onResolve(comment.id, true)}
-              >
-                <CheckCircle className="size-3.5" />
-                Resolve
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
-                onClick={() => void onResolve(comment.id, false)}
-              >
-                <RotateCcw className="size-3.5" />
-                Unresolve
-              </Button>
-            )
-          ) : null}
-          {canDelete(currentUser, comment.authorId) ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-auto h-7 gap-1.5 px-2 text-xs text-destructive hover:text-destructive"
-              onClick={() => void onDelete(comment.id)}
-            >
-              <Trash2 className="size-3.5" />
-              Delete
-            </Button>
-          ) : null}
+      {/* Thread list */}
+      <div className="max-h-[380px] overflow-y-auto px-4 pb-2">
+        <div className="space-y-4">
+          {threadItems.map((item, index) => (
+            <ThreadMessageItem key={item.id} item={item} isParent={index === 0} />
+          ))}
+          <div ref={repliesEndRef} />
         </div>
       </div>
 
-      {/* Replies — scrollable so many replies don't push the popover off screen */}
-      {replies.length > 0 ? (
-        <div className="max-h-48 overflow-y-auto border-t border-border/60">
-          <div className="space-y-2.5 px-3 py-2.5">
-            {replies.map((r) => (
-              <ReplyItem key={r.id} reply={r} />
-            ))}
-            <div ref={repliesEndRef} />
-          </div>
+      {/* Footer actions */}
+      <div className="flex items-center gap-2 border-t border-border/70 px-4 py-2">
+        <span className="text-xs text-muted-foreground">{replies.length} {replies.length === 1 ? "reply" : "replies"}</span>
+        <div className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground/70">
+          {comment.resolved ? "Resolved" : "Open"}
         </div>
-      ) : null}
+      </div>
 
       {/* Reply input */}
-      <div className="flex items-center gap-2 border-t border-border/60 bg-muted/30 px-3 py-2">
+      <div className="flex items-center gap-2 border-t border-border/70 bg-muted/20 px-4 py-3">
         {currentUser ? (
           <UserAvatar
             name={currentUser.name}
             image={currentUser.image ?? null}
-            className="size-6 shrink-0"
+            className="size-8 shrink-0"
           />
         ) : null}
         <Input
-          className="h-7 flex-1 border-0 bg-transparent px-0 text-xs shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0"
-          placeholder={canComment ? "Reply…" : "Switch to Commenting mode to reply"}
+          className="h-10 flex-1 rounded-xl border-0 bg-muted/60 px-3 text-sm shadow-none placeholder:text-muted-foreground/80 focus-visible:ring-1 focus-visible:ring-ring"
+          placeholder={canComment ? "Reply" : "Switch to Commenting mode to reply"}
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
           onKeyDown={(e) => {
@@ -212,13 +206,13 @@ export function InlineThreadPopover({
           disabled={submitting || !canComment}
         />
         <Button
-          variant="ghost"
+          variant="secondary"
           size="icon"
-          className="size-7 shrink-0 text-primary disabled:opacity-40"
+          className="size-9 shrink-0 rounded-full disabled:opacity-40"
           disabled={!replyText.trim() || submitting || !canComment}
           onClick={() => void handleReply()}
         >
-          <ArrowRight className="size-3.5" />
+          <ArrowRight className="size-4" />
         </Button>
       </div>
     </div>
