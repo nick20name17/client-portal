@@ -129,4 +129,52 @@ export const commentModule = new Elysia({
             },
             auth: true,
         },
+    )
+    .post(
+        "/comments/:id/tags",
+        async ({ user, params: { id }, body }) =>
+            CommentService.addTag(id, body.tag, user.id, user.role as string),
+        {
+            params: CommentModelSchema.commentParams,
+            body: CommentModelSchema.addTag,
+            response: {
+                200: CommentModelSchema.selectTag,
+                403: CommentModelSchema.forbidden,
+                404: CommentModelSchema.notFound,
+            },
+            auth: true,
+        },
+    )
+    .delete(
+        "/comments/:id/tags/:tag",
+        async ({ user, params: { id, tag } }) =>
+            CommentService.removeTag(id, tag, user.id, user.role as string),
+        {
+            params: CommentModelSchema.tagParams,
+            response: {
+                403: CommentModelSchema.forbidden,
+                404: CommentModelSchema.notFound,
+            },
+            auth: true,
+        },
+    )
+    .patch(
+        "/comments/:id/resolve",
+        async ({ user, params: { id }, body }) =>
+            CommentService.setResolved(
+                id,
+                body.resolved,
+                user.id,
+                user.role as string,
+            ),
+        {
+            params: CommentModelSchema.commentParams,
+            body: CommentModelSchema.setResolved,
+            response: {
+                200: CommentModelSchema.selectComment,
+                403: CommentModelSchema.forbidden,
+                404: CommentModelSchema.notFound,
+            },
+            auth: true,
+        },
     );

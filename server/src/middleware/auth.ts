@@ -29,3 +29,14 @@ export function requireAdmin({
 }) {
     if (user.role !== "admin") return status(403, { message: "Forbidden" });
 }
+
+export function requireAdminOrManager({
+    user,
+    status,
+}: {
+    user: { role: string };
+    status: any;
+}) {
+    if (user.role !== "admin" && user.role !== "manager")
+        return status(403, { message: "Forbidden" });
+}

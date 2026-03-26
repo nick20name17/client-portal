@@ -1,16 +1,28 @@
 import { db } from "@/db";
 import { projectMembers, projects } from "@/db/schema/app";
+import { user } from "@/db/schema/auth";
 import { FileService } from "@/modules/file/service";
 import { and, eq } from "drizzle-orm";
 import { status } from "elysia";
 
-type CreateBody = { name: string; repoUrl: string; description?: string };
+type CreateBody = { name: string; repoUrl: string; description?: string; companyId?: number };
 type UpdateBody = Partial<CreateBody>;
 
 export const ProjectService = {
     async getAll(userId: string, role: string) {
         if (role === "admin") {
             return db.query.projects.findMany({
+                with: { members: true, files: true },
+            });
+        }
+
+        if (role === "manager") {
+            const caller = await db.query.user.findFirst({
+                where: eq(user.id, userId),
+            });
+            if (!caller?.companyId) return [];
+            return db.query.projects.findMany({
+                where: eq(projects.companyId, caller.companyId),
                 with: { members: true, files: true },
             });
         }
@@ -36,9 +48,17 @@ export const ProjectService = {
         if (!project)
             throw status(404, { message: "Project not found" } as const);
 
-        if (role !== "admin") {
+        if (role !== "admin" && role !== "manager") {
             const isMember = project.members.some((m) => m.userId === userId);
             if (!isMember)
+                throw status(403, { message: "Forbidden" } as const);
+        }
+
+        if (role === "manager") {
+            const caller = await db.query.user.findFirst({
+                where: eq(user.id, userId),
+            });
+            if (!caller?.companyId || project.companyId !== caller.companyId)
                 throw status(403, { message: "Forbidden" } as const);
         }
 
@@ -86,13 +106,32 @@ export const ProjectService = {
             throw status(404, { message: "Project not found" } as const);
     },
 
-    async addMember(projectId: number, userId: string) {
+    async addMember(
+        projectId: number,
+        userId: string,
+        callerId: string,
+        callerRole: string,
+    ) {
         const project = await db.query.projects.findFirst({
             where: eq(projects.id, projectId),
         });
 
         if (!project)
             throw status(404, { message: "Project not found" } as const);
+
+        if (callerRole === "manager") {
+            const caller = await db.query.user.findFirst({
+                where: eq(user.id, callerId),
+            });
+            if (!caller?.companyId || project.companyId !== caller.companyId)
+                throw status(403, { message: "Forbidden" } as const);
+
+            const targetUser = await db.query.user.findFirst({
+                where: eq(user.id, userId),
+            });
+            if (targetUser?.companyId !== caller.companyId)
+                throw status(403, { message: "Forbidden" } as const);
+        }
 
         const existing = await db.query.projectMembers.findFirst({
             where: and(
@@ -112,7 +151,26 @@ export const ProjectService = {
         return member;
     },
 
-    async removeMember(projectId: number, userId: string) {
+    async removeMember(
+        projectId: number,
+        userId: string,
+        callerId: string,
+        callerRole: string,
+    ) {
+        if (callerRole === "manager") {
+            const project = await db.query.projects.findFirst({
+                where: eq(projects.id, projectId),
+            });
+            if (!project)
+                throw status(404, { message: "Project not found" } as const);
+
+            const caller = await db.query.user.findFirst({
+                where: eq(user.id, callerId),
+            });
+            if (!caller?.companyId || project.companyId !== caller.companyId)
+                throw status(403, { message: "Forbidden" } as const);
+        }
+
         const [deleted] = await db
             .delete(projectMembers)
             .where(

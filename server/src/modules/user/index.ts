@@ -11,24 +11,36 @@ export const userModule = new Elysia({
     },
 })
     .use(authMiddleware)
-    .get(
-        "/",
-        async () => UserService.getAll(),
-        {
-            response: {
-                200: t.Array(UserModelSchema.select),
-                403: UserModelSchema.forbidden,
-            },
-            auth: true,
-            beforeHandle: requireAdmin,
+    .get("/", async () => UserService.getAll(), {
+        response: {
+            200: t.Array(UserModelSchema.select),
+            403: UserModelSchema.forbidden,
         },
-    )
+        auth: true,
+        beforeHandle: requireAdmin,
+    })
     .patch(
         "/:id/role",
         async ({ params: { id }, body }) => UserService.updateRole(id, body),
         {
             params: UserModelSchema.params,
             body: UserModelSchema.updateRole,
+            response: {
+                200: UserModelSchema.select,
+                403: UserModelSchema.forbidden,
+                404: UserModelSchema.notFound,
+            },
+            auth: true,
+            beforeHandle: requireAdmin,
+        },
+    )
+    .patch(
+        "/:id/company",
+        async ({ params: { id }, body }) =>
+            UserService.updateCompany(id, body.companyId),
+        {
+            params: UserModelSchema.params,
+            body: UserModelSchema.updateCompany,
             response: {
                 200: UserModelSchema.select,
                 403: UserModelSchema.forbidden,

@@ -3,7 +3,7 @@ import { user } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { status } from "elysia";
 
-type UpdateRoleBody = { role: "admin" | "client" };
+type UpdateRoleBody = { role: "admin" | "manager" | "client" };
 
 export const UserService = {
     async getAll() {
@@ -14,6 +14,19 @@ export const UserService = {
         const [updated] = await db
             .update(user)
             .set({ role: body.role })
+            .where(eq(user.id, id))
+            .returning();
+
+        if (!updated)
+            throw status(404, { message: "User not found" } as const);
+
+        return updated;
+    },
+
+    async updateCompany(id: string, companyId: number | null) {
+        const [updated] = await db
+            .update(user)
+            .set({ companyId })
             .where(eq(user.id, id))
             .returning();
 

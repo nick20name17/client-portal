@@ -10,6 +10,7 @@ import {
     unique,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
+import { companies } from "./company";
 
 export const projects = pgTable(
     "projects",
@@ -21,6 +22,9 @@ export const projects = pgTable(
         createdBy: text("created_by")
             .notNull()
             .references(() => user.id, { onDelete: "cascade" }),
+        companyId: integer("company_id").references(() => companies.id, {
+            onDelete: "set null",
+        }),
         createdAt: timestamp("created_at", { withTimezone: true })
             .defaultNow()
             .notNull(),
@@ -91,6 +95,10 @@ export const comments = pgTable(
         cssSelector: text("css_selector"),
         anchorJson: jsonb("anchor_json").$type<Record<string, unknown>>(),
         content: text("content").notNull(),
+        resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+        resolvedBy: text("resolved_by").references(() => user.id, {
+            onDelete: "set null",
+        }),
         createdAt: timestamp("created_at", { withTimezone: true })
             .defaultNow()
             .notNull(),
@@ -102,6 +110,24 @@ export const comments = pgTable(
     (table) => [
         index("comments_fileId_idx").on(table.fileId),
         index("comments_authorId_idx").on(table.authorId),
+    ],
+);
+
+export const commentTags = pgTable(
+    "comment_tags",
+    {
+        id: serial("id").primaryKey(),
+        commentId: integer("comment_id")
+            .notNull()
+            .references(() => comments.id, { onDelete: "cascade" }),
+        tag: text("tag").notNull(),
+        createdAt: timestamp("created_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+    },
+    (table) => [
+        index("comment_tags_commentId_idx").on(table.commentId),
+        unique("comment_tags_comment_tag_unique").on(table.commentId, table.tag),
     ],
 );
 
@@ -134,6 +160,10 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     creator: one(user, {
         fields: [projects.createdBy],
         references: [user.id],
+    }),
+    company: one(companies, {
+        fields: [projects.companyId],
+        references: [companies.id],
     }),
     members: many(projectMembers),
     files: many(projectFiles),
@@ -170,7 +200,20 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
         fields: [comments.authorId],
         references: [user.id],
     }),
+    resolver: one(user, {
+        fields: [comments.resolvedBy],
+        references: [user.id],
+        relationName: "commentResolver",
+    }),
     replies: many(replies),
+    tags: many(commentTags),
+}));
+
+export const commentTagsRelations = relations(commentTags, ({ one }) => ({
+    comment: one(comments, {
+        fields: [commentTags.commentId],
+        references: [comments.id],
+    }),
 }));
 
 export const repliesRelations = relations(replies, ({ one }) => ({

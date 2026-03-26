@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { comments, projectFiles, projects, replies } from "@/db/schema/app";
+import { commentTags, comments, projectFiles, projects, replies } from "@/db/schema/app";
 import { sendEmail } from "@/lib/email";
 import { and, eq } from "drizzle-orm";
 import { status } from "elysia";
@@ -47,6 +47,8 @@ export const CommentService = {
             where: eq(comments.fileId, fileId),
             with: {
                 author: { columns: { id: true, name: true, image: true } },
+                resolver: { columns: { id: true, name: true } },
+                tags: true,
                 replies: {
                     with: {
                         author: {
@@ -208,5 +210,104 @@ export const CommentService = {
             throw status(403, { message: "Forbidden" } as const);
 
         await db.delete(replies).where(eq(replies.id, id));
+    },
+
+    async addTag(commentId: number, tag: string, userId: string, role: string) {
+        const comment = await db.query.comments.findFirst({
+            where: eq(comments.id, commentId),
+            with: { file: { with: { project: { with: { members: true } } } } },
+        });
+
+        if (!comment)
+            throw status(404, { message: "Comment not found" } as const);
+
+        if (role !== "admin") {
+            const isMember = comment.file.project.members.some(
+                (m) => m.userId === userId,
+            );
+            if (!isMember)
+                throw status(403, { message: "Forbidden" } as const);
+        }
+
+        const normalized = tag.trim().toLowerCase();
+
+        const existing = await db.query.commentTags.findFirst({
+            where: and(
+                eq(commentTags.commentId, commentId),
+                eq(commentTags.tag, normalized),
+            ),
+        });
+
+        if (existing) return existing;
+
+        const [newTag] = await db
+            .insert(commentTags)
+            .values({ commentId, tag: normalized })
+            .returning();
+
+        return newTag;
+    },
+
+    async removeTag(commentId: number, tag: string, userId: string, role: string) {
+        const comment = await db.query.comments.findFirst({
+            where: eq(comments.id, commentId),
+            with: { file: { with: { project: { with: { members: true } } } } },
+        });
+
+        if (!comment)
+            throw status(404, { message: "Comment not found" } as const);
+
+        if (role !== "admin") {
+            const isMember = comment.file.project.members.some(
+                (m) => m.userId === userId,
+            );
+            if (!isMember)
+                throw status(403, { message: "Forbidden" } as const);
+        }
+
+        const normalized = tag.trim().toLowerCase();
+
+        await db
+            .delete(commentTags)
+            .where(
+                and(
+                    eq(commentTags.commentId, commentId),
+                    eq(commentTags.tag, normalized),
+                ),
+            );
+    },
+
+    async setResolved(
+        commentId: number,
+        resolved: boolean,
+        userId: string,
+        role: string,
+    ) {
+        const comment = await db.query.comments.findFirst({
+            where: eq(comments.id, commentId),
+            with: { file: { with: { project: { with: { members: true } } } } },
+        });
+
+        if (!comment)
+            throw status(404, { message: "Comment not found" } as const);
+
+        if (role !== "admin") {
+            const isMember = comment.file.project.members.some(
+                (m) => m.userId === userId,
+            );
+            if (!isMember)
+                throw status(403, { message: "Forbidden" } as const);
+        }
+
+        const [updated] = await db
+            .update(comments)
+            .set({
+                resolvedAt: resolved ? new Date() : null,
+                resolvedBy: resolved ? userId : null,
+            })
+            .where(eq(comments.id, commentId))
+            .returning();
+
+        return updated;
     },
 };

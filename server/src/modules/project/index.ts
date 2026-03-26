@@ -1,4 +1,4 @@
-import { authMiddleware, requireAdmin } from "@/middleware/auth";
+import { authMiddleware, requireAdmin, requireAdminOrManager } from "@/middleware/auth";
 import { Elysia, t } from "elysia";
 import { ProjectModelSchema } from "./model";
 import { ProjectService } from "./service";
@@ -83,8 +83,13 @@ export const projectModule = new Elysia({
     )
     .post(
         "/:projectId/members",
-        async ({ params: { projectId }, body }) =>
-            ProjectService.addMember(projectId, body.userId),
+        async ({ user, params: { projectId }, body }) =>
+            ProjectService.addMember(
+                projectId,
+                body.userId,
+                user.id,
+                user.role as string,
+            ),
         {
             params: ProjectModelSchema.params,
             body: ProjectModelSchema.addMember,
@@ -95,13 +100,18 @@ export const projectModule = new Elysia({
                 409: ProjectModelSchema.alreadyMember,
             },
             auth: true,
-            beforeHandle: requireAdmin,
+            beforeHandle: requireAdminOrManager,
         },
     )
     .delete(
         "/:projectId/members/:userId",
-        async ({ params: { projectId, userId } }) =>
-            ProjectService.removeMember(projectId, userId),
+        async ({ user, params: { projectId, userId } }) =>
+            ProjectService.removeMember(
+                projectId,
+                userId,
+                user.id,
+                user.role as string,
+            ),
         {
             params: ProjectModelSchema.memberParams,
             response: {
@@ -109,6 +119,6 @@ export const projectModule = new Elysia({
                 404: ProjectModelSchema.memberNotFound,
             },
             auth: true,
-            beforeHandle: requireAdmin,
+            beforeHandle: requireAdminOrManager,
         },
     );
