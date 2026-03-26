@@ -9,10 +9,9 @@ import type { Anchor } from "@/types";
 const BRIDGE_SCRIPT = `
 (function(){
   var commentAnchors = [];
-  var commentPins = [];
   var pinnedNodes = [];
-  var pinNodes = [];
   var activeNode = null;
+  var interactionMode = "browsing";
 
   function clearPinned(){
     for (var i = 0; i < pinnedNodes.length; i++) {
@@ -29,13 +28,6 @@ const BRIDGE_SCRIPT = `
     activeNode.style.outline = "";
     activeNode.style.boxShadow = "";
     activeNode = null;
-  }
-  function clearPinNodes(){
-    for (var i = 0; i < pinNodes.length; i++) {
-      var pin = pinNodes[i];
-      if (pin && pin.parentNode) pin.parentNode.removeChild(pin);
-    }
-    pinNodes = [];
   }
 
   function simpleSelector(el){
@@ -96,6 +88,7 @@ const BRIDGE_SCRIPT = `
   }
   function applyCommentAnchors(){
     clearPinned();
+    if (interactionMode !== "commenting") return;
     var seen = new Set();
     for (var i = 0; i < commentAnchors.length; i++) {
       var node = resolveAnchor(commentAnchors[i]);
@@ -106,74 +99,23 @@ const BRIDGE_SCRIPT = `
       node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(13,153,255,0.28)";
     }
   }
-  function pinPositionTarget(el){
-    if (!el || !el.getBoundingClientRect) return null;
-    var rect = el.getBoundingClientRect();
-    return {
-      top: rect.top + window.scrollY - 10,
-      left: rect.left + window.scrollX - 10
-    };
-  }
-  function drawPins(){
-    clearPinNodes();
-    for (var i = 0; i < commentPins.length; i++) {
-      var row = commentPins[i];
-      var node = resolveAnchor(row.anchor);
-      if (!node) continue;
-      var pos = pinPositionTarget(node);
-      if (!pos) continue;
-      var pin = document.createElement("button");
-      pin.type = "button";
-      pin.setAttribute("aria-label", "Open comment thread");
-      pin.dataset.commentPin = "1";
-      pin.dataset.commentId = String(row.commentId || "");
-      pin.dataset.anchorKey = String(row.anchorKey || "");
-      pin.style.position = "absolute";
-      pin.style.top = pos.top + "px";
-      pin.style.left = pos.left + "px";
-      pin.style.width = "20px";
-      pin.style.height = "20px";
-      pin.style.borderRadius = "999px";
-      pin.style.border = "none";
-      pin.style.background = "#0D99FF";
-      pin.style.color = "#fff";
-      pin.style.font = "600 11px/20px ui-sans-serif, system-ui, sans-serif";
-      pin.style.textAlign = "center";
-      pin.style.cursor = "pointer";
-      pin.style.zIndex = "2147483647";
-      pin.style.boxShadow = "0 0 0 2px #fff, 0 0 0 5px rgba(13,153,255,0.35)";
-      pin.textContent = String(row.count || 1);
-      pin.addEventListener("click", function(evt){
-        evt.preventDefault();
-        evt.stopPropagation();
-        var id = this && this.dataset ? this.dataset.commentId : "";
-        var key = this && this.dataset ? this.dataset.anchorKey : "";
-        window.parent.postMessage({ type: "PIN_SELECTED", commentId: id, anchorKey: key }, "*");
-      }, true);
-      pinNodes.push(pin);
-      document.body.appendChild(pin);
-    }
-  }
-  function refreshCommentOverlays(){
-    applyCommentAnchors();
-    drawPins();
-  }
+
   document.addEventListener("mouseover", function(e){
+    if (interactionMode !== "commenting") return;
     var t = e.target;
     if (!t || !t.style) return;
-    if (t.dataset && t.dataset.commentPin === "1") return;
     t.style.outline = "1px solid rgba(13,153,255,0.28)";
   });
   document.addEventListener("mouseout", function(e){
+    if (interactionMode !== "commenting") return;
     var t = e.target;
     if (!t || !t.style) return;
-    if (t.dataset && t.dataset.commentPin === "1") return;
     t.style.outline = "";
   });
   document.addEventListener("click", function(e){
+    if (interactionMode !== "commenting") return;
     var el = e.target;
     if (!el || el.nodeType !== 1) return;
-    if (el.dataset && el.dataset.commentPin === "1") return;
     e.preventDefault();
     e.stopPropagation();
     window.parent.postMessage({
@@ -187,16 +129,25 @@ const BRIDGE_SCRIPT = `
       }
     }, "*");
   }, true);
+
   window.addEventListener("message", function(e){
     if (!e.data || typeof e.data !== "object") return;
+
     if (e.data.type === "SET_COMMENT_ANCHORS") {
       commentAnchors = Array.isArray(e.data.anchors) ? e.data.anchors : [];
-      refreshCommentOverlays();
+      if (interactionMode === "commenting") applyCommentAnchors();
+      else clearPinned();
       return;
     }
-    if (e.data.type === "SET_COMMENT_PINS") {
-      commentPins = Array.isArray(e.data.pins) ? e.data.pins : [];
-      refreshCommentOverlays();
+    if (e.data.type === "SET_INTERACTION_MODE") {
+      interactionMode = e.data.mode === "commenting" ? "commenting" : "browsing";
+      if (interactionMode !== "commenting") {
+        document.body.style.cursor = "";
+        clearPinned();
+        clearActive();
+      } else {
+        applyCommentAnchors();
+      }
       return;
     }
     if (e.data.type === "CHECK_ANCHOR_RESOLUTION") {
@@ -212,7 +163,33 @@ const BRIDGE_SCRIPT = `
       window.parent.postMessage({ type: "ANCHOR_RESOLUTION_RESULT", resolved: resolved }, "*");
       return;
     }
+    if (e.data.type === "GET_ANCHOR_POSITIONS") {
+      var comments = Array.isArray(e.data.comments) ? e.data.comments : [];
+      var requestId = typeof e.data.requestId === "string" ? e.data.requestId : "default";
+      var positions = {};
+      var scrollW = document.documentElement.scrollWidth || document.body.scrollWidth || 1;
+      var scrollH = document.documentElement.scrollHeight || document.body.scrollHeight || 1;
+      for (var k = 0; k < comments.length; k++) {
+        var c = comments[k];
+        if (!c || !c.id) continue;
+        var node = resolveAnchor(c.anchor);
+        if (node) {
+          var rect = node.getBoundingClientRect();
+          positions[c.id] = {
+            left: rect.left + window.scrollX,
+            top: rect.top + window.scrollY,
+            width: rect.width,
+            height: rect.height,
+            scrollWidth: scrollW,
+            scrollHeight: scrollH
+          };
+        }
+      }
+      window.parent.postMessage({ type: "ANCHOR_POSITIONS", requestId: requestId, positions: positions }, "*");
+      return;
+    }
     if (e.data.type === "HIGHLIGHT_ELEMENT") {
+      if (interactionMode !== "commenting") return;
       clearActive();
       var anchor = e.data.anchor;
       var node = resolveAnchor(anchor);
@@ -222,14 +199,18 @@ const BRIDGE_SCRIPT = `
         node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(0,102,255,0.38)";
         activeNode = node;
       }
+      return;
     }
     if (e.data.type === "CLEAR_HIGHLIGHT") {
       clearActive();
-      refreshCommentOverlays();
+      applyCommentAnchors();
+      return;
+    }
+    if (e.data.type === "SET_CURSOR") {
+      document.body.style.cursor = e.data.cursor || "";
+      return;
     }
   });
-  window.addEventListener("scroll", drawPins, true);
-  window.addEventListener("resize", drawPins);
 })();
 `;
 
@@ -249,13 +230,23 @@ export const HtmlFrame = forwardRef<
     loading: boolean;
     error: string | null;
     commentAnchors: Anchor[];
-    commentPins: { commentId: string; anchor: Anchor; count: number; anchorKey: string }[];
+    interactionMode?: "browsing" | "commenting";
     anchorResolutionItems?: { id: string; anchor: Anchor }[];
     onAnchorResolution?: (resolved: Record<string, boolean>) => void;
+    onFrameReady?: () => void;
   }
 >(
   function HtmlFrame(
-    { html, loading, error, commentAnchors, commentPins, anchorResolutionItems = [], onAnchorResolution },
+    {
+      html,
+      loading,
+      error,
+      commentAnchors,
+      interactionMode = "browsing",
+      anchorResolutionItems = [],
+      onAnchorResolution,
+      onFrameReady,
+    },
     ref,
   ) {
   const localRef = useRef<HTMLIFrameElement | null>(null);
@@ -273,12 +264,13 @@ export const HtmlFrame = forwardRef<
     if (!win) return;
     win.postMessage({ type: "SET_COMMENT_ANCHORS", anchors: commentAnchors }, "*");
   }, [commentAnchors, frameReady]);
+
   useEffect(() => {
     if (!frameReady) return;
     const win = localRef.current?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: "SET_COMMENT_PINS", pins: commentPins }, "*");
-  }, [commentPins, frameReady]);
+    win.postMessage({ type: "SET_INTERACTION_MODE", mode: interactionMode }, "*");
+  }, [interactionMode, frameReady]);
 
   useEffect(() => {
     if (!frameReady) return;
@@ -301,6 +293,11 @@ export const HtmlFrame = forwardRef<
 
     return () => window.removeEventListener("message", onMsg);
   }, [frameReady, anchorResolutionItems, onAnchorResolution]);
+
+  function handleLoad() {
+    setFrameReady(true);
+    onFrameReady?.();
+  }
 
   const artboardChrome = cn(
     "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-md ring-1 ring-black/5 dark:bg-card dark:ring-white/10",
@@ -347,7 +344,7 @@ export const HtmlFrame = forwardRef<
           srcDoc={srcDoc}
           sandbox="allow-scripts allow-same-origin"
           className="block h-full min-h-[min(70dvh,520px)] w-full flex-1 border-0 bg-white"
-          onLoad={() => setFrameReady(true)}
+          onLoad={handleLoad}
         />
       </div>
     </div>
