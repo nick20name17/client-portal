@@ -1,21 +1,20 @@
-import { cors } from "@/lib/cors";
-import { handleError } from "@/lib/error-handler";
-import { openapi } from "@/lib/openapi";
-import { authMiddleware } from "@/middleware/auth";
-import { commentModule, companyModule, fileModule, projectModule, userModule } from "@/modules";
-import { env } from "@/utils/env";
-import { Elysia } from "elysia";
+import { pool } from '@/db'
+import { auth, cors, openapi } from '@/lib'
+import { env } from '@/utils/env'
+import { Elysia } from 'elysia'
 
-const app = new Elysia({ prefix: "/api" })
-    .use(cors)
-    .use(openapi)
-    .use(authMiddleware)
-    .use(userModule)
-    .use(companyModule)
-    .use(projectModule)
-    .use(fileModule)
-    .use(commentModule)
-    .onError(handleError)
-    .listen(env.PORT ?? 3000);
+const app = new Elysia({ prefix: '/api' })
+  .use(cors)
+  .use(openapi)
+  .get('/health', async () => {
+    const ok = await pool
+      .query('SELECT 1')
+      .then(() => true)
+      .catch(() => false)
 
-export default app;
+    return { status: ok ? 'ok' : 'degraded', db: ok }
+  })
+  .mount(auth.handler)
+  .listen(env.PORT ?? 3000)
+
+console.log(`API running at ${app.server?.hostname}:${app.server?.port}`)

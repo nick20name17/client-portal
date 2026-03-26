@@ -1,10 +1,11 @@
-import { cors as corsMiddleware } from "@elysiajs/cors";
-import { getAllowedOrigins } from "@/lib/trusted-origins";
+import { env } from '@/utils/env'
+import { cors as corsMiddleware } from '@elysiajs/cors'
 
 export const cors = corsMiddleware({
-    origin: getAllowedOrigins(),
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-    maxAge: 86400,
-});
+  origin: env.TRUSTED_ORIGIN,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposeHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400,
+  credentials: true
+})

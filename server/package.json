@@ -1,30 +1,26 @@
 {
-    "name": "app",
-    "version": "1.0.50",
-    "scripts": {
-        "dev": "bun run --watch src/index.ts",
-        "db:generate": "drizzle-kit generate",
-        "db:migrate": "drizzle-kit migrate",
-        "db:studio": "drizzle-kit studio"
-    },
-    "dependencies": {
-        "@better-auth/drizzle-adapter": "^1.5.6",
-        "@elysiajs/cors": "^1.4.1",
-        "@elysiajs/openapi": "^1.4.14",
-        "@sinclair/typebox": "^0.34.48",
-        "better-auth": "^1.5.6",
-        "dotenv": "^17.3.1",
-        "drizzle-orm": "^0.45.1",
-        "drizzle-typebox": "^0.3.3",
-        "elysia": "latest",
-        "pg": "^8.20.0",
-        "resend": "^6.9.4"
-    },
-    "devDependencies": {
-        "@types/pg": "^8.20.0",
-        "bun-types": "latest",
-        "drizzle-kit": "^0.31.10",
-        "tsx": "^4.21.0"
-    },
-    "module": "src/index.js"
+  "name": "app",
+  "version": "1.0.50",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "elysia": "latest",
+    "@elysiajs/cors": "latest",
+    "@elysiajs/openapi": "latest",
+    "@sinclair/typebox": "latest",
+    "better-auth": "latest",
+    "@better-auth/drizzle-adapter": "latest",
+    "drizzle-orm": "latest",
+    "pg": "latest"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "drizzle-kit": "latest",
+    "@types/pg": "latest"
+  },
+  "module": "src/index.js"
 }
