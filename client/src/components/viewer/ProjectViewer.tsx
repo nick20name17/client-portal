@@ -52,14 +52,9 @@ const emptyAnchor = (): Anchor => ({
   textContent: null,
   tagName: "DIV",
   xpath: "",
+  relativeX: 0.5,
+  relativeY: 0.5,
 });
-
-function anchorKey(anchor: Anchor | null | undefined): string {
-  if (!anchor) return "";
-  if (anchor.dataComment) return `dc:${anchor.dataComment}`;
-  if (anchor.selector) return `sel:${anchor.selector}`;
-  return "";
-}
 
 function flattenCommentAnchorsForResolution(comments: Comment[] | undefined): { id: string; anchor: Anchor }[] {
   if (!comments?.length) return [];
@@ -169,6 +164,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [commentMode, setCommentMode] = useState(false);
   // Pending anchor waiting for position resolution — stored in a ref to avoid stale closure race
   const pendingGhostAnchorRef = useRef<Anchor | null>(null);
+  const pendingMatchRequestIdRef = useRef<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
@@ -223,17 +219,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     [comments],
   );
 
-  const topLevelCommentIdByAnchorKey = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const c of comments ?? []) {
-      if (c.parentId) continue;
-      const key = anchorKey(c.anchor as Anchor);
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, c.id);
-    }
-    return map;
-  }, [comments]);
-
   const handleAnchorResolution = useCallback((resolved: Record<string, boolean>) => {
     setAnchorResolvedMap(resolved);
   }, []);
@@ -265,14 +250,25 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       ) {
         const raw = e.data.positions as Record<
           string,
-          { left: number; top: number; width: number; height: number; scrollWidth: number; scrollHeight: number }
+          {
+            x?: number;
+            y?: number;
+            left: number;
+            top: number;
+            width: number;
+            height: number;
+            scrollWidth: number;
+            scrollHeight: number;
+          }
         >;
         const next: Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }> = {};
         for (const id of Object.keys(raw)) {
           const p = raw[id];
+          const cx = typeof p.x === "number" ? p.x : p.left + p.width / 2;
+          const cy = typeof p.y === "number" ? p.y : p.top + p.height / 2;
           next[id] = {
-            cx: p.left + p.width / 2,
-            cy: p.top + p.height / 2,
+            cx,
+            cy,
             scrollWidth: p.scrollWidth,
             scrollHeight: p.scrollHeight,
           };
@@ -437,39 +433,58 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       if (e.data?.type === "ELEMENT_SELECTED") {
         const anchor = e.data.anchor as Anchor;
         if (interactionMode !== "commenting" || isFullscreen) return;
+        setCommentMode(false);
+        setGhostRaw(null);
+        pendingGhostAnchorRef.current = anchor;
+        const requestId = `match-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        pendingMatchRequestIdRef.current = requestId;
+        const topLevelComments = (comments ?? [])
+          .filter((c) => !c.parentId && c.anchor && (c.anchor.selector || c.anchor.dataComment))
+          .map((c) => ({ id: c.id, anchor: c.anchor }));
+        const win = iframeRef.current?.contentWindow;
+        win?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
+        win?.postMessage(
+          {
+            type: "MATCH_EXISTING_THREAD",
+            requestId,
+            selectedAnchor: anchor,
+            comments: topLevelComments,
+          },
+          "*",
+        );
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [interactionMode, isFullscreen, comments]);
 
-        // If this element already has a top-level comment, open that thread instead of creating new.
-        const existingThreadId = topLevelCommentIdByAnchorKey.get(anchorKey(anchor));
+  // Handle ghost pin position — store raw iframe coords
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type === "MATCH_EXISTING_THREAD_RESULT") {
+        if (!pendingMatchRequestIdRef.current || e.data.requestId !== pendingMatchRequestIdRef.current) return;
+        const anchor = pendingGhostAnchorRef.current;
+        if (!anchor) return;
+        pendingMatchRequestIdRef.current = null;
+
+        const existingThreadId =
+          typeof e.data.commentId === "string" && e.data.commentId.trim() ? e.data.commentId : null;
         if (existingThreadId) {
-          setCommentMode(false);
-          setGhostRaw(null);
           pendingGhostAnchorRef.current = null;
           setActiveThreadId(existingThreadId);
           const existing = comments?.find((c) => c.id === existingThreadId);
           if (existing) sendHighlight(existing.anchor as Anchor);
-          iframeRef.current?.contentWindow?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
           return;
         }
 
-        // Store anchor in ref so the position handler can read it without stale closure
-        pendingGhostAnchorRef.current = anchor;
-        setGhostRaw(null); // hide any previous ghost while we wait for new position
-        setCommentMode(false);
-        iframeRef.current?.contentWindow?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
         iframeRef.current?.contentWindow?.postMessage({
           type: "GET_ANCHOR_POSITIONS",
           requestId: "ghost",
           comments: [{ id: "__ghost__", anchor }],
         }, "*");
+        return;
       }
-    }
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, [interactionMode, isFullscreen, topLevelCommentIdByAnchorKey, comments, sendHighlight]);
 
-  // Handle ghost pin position — store raw iframe coords
-  useEffect(() => {
-    function onMsg(e: MessageEvent) {
       if (
         e.data?.type === "ANCHOR_POSITIONS" &&
         e.data.requestId === "ghost" &&
@@ -478,13 +493,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         const anchor = pendingGhostAnchorRef.current;
         if (!anchor) return;
         const pos = e.data.positions.__ghost__ as {
-          left: number; top: number; width: number; height: number;
+          x?: number; y?: number; left: number; top: number; width: number; height: number;
           scrollWidth: number; scrollHeight: number;
         };
         pendingGhostAnchorRef.current = null;
+        const cx = typeof pos.x === "number" ? pos.x : pos.left + pos.width / 2;
+        const cy = typeof pos.y === "number" ? pos.y : pos.top + pos.height / 2;
         setGhostRaw({
-          cx: pos.left + pos.width / 2,
-          cy: pos.top + pos.height / 2,
+          cx,
+          cy,
           scrollWidth: pos.scrollWidth,
           scrollHeight: pos.scrollHeight,
           anchor,
@@ -493,7 +510,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, []);
+  }, [comments, sendHighlight]);
 
   // Enter comment mode: set crosshair cursor in iframe
   function enterCommentMode() {
@@ -510,6 +527,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setGhostRaw(null);
     setSelectedTagIds([]);
     pendingGhostAnchorRef.current = null;
+    pendingMatchRequestIdRef.current = null;
     iframeRef.current?.contentWindow?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
   }
 

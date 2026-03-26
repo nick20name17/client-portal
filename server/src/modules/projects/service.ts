@@ -335,7 +335,13 @@ export const ProjectService = {
       throw status(404, {
         error: "Not found",
       } satisfies ProjectModel["notFound"]);
-    const res = await fetch(file.githubRawUrl);
+    const res = await fetch(file.githubRawUrl, {
+      cache: "no-store",
+      headers: {
+        "cache-control": "no-cache",
+        pragma: "no-cache",
+      },
+    });
     if (!res.ok) {
       throw status(502, {
         error: "Upstream fetch failed",

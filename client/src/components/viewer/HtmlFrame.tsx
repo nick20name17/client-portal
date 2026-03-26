@@ -9,26 +9,10 @@ import type { Anchor } from "@/types";
 const BRIDGE_SCRIPT = `
 (function(){
   var commentAnchors = [];
-  var pinnedNodes = [];
-  var activeNode = null;
   var interactionMode = "browsing";
 
-  function clearPinned(){
-    for (var i = 0; i < pinnedNodes.length; i++) {
-      var node = pinnedNodes[i];
-      if (!node || !node.style) continue;
-      node.style.outline = "";
-      node.style.boxShadow = "";
-    }
-    pinnedNodes = [];
-  }
-
-  function clearActive(){
-    if (!activeNode || !activeNode.style) return;
-    activeNode.style.outline = "";
-    activeNode.style.boxShadow = "";
-    activeNode = null;
-  }
+  function clearPinned(){}
+  function clearActive(){}
 
   function simpleSelector(el){
     if (!el || el.nodeType !== 1) return "";
@@ -87,41 +71,18 @@ const BRIDGE_SCRIPT = `
     return null;
   }
   function applyCommentAnchors(){
-    clearPinned();
     if (interactionMode !== "commenting") return;
-    var seen = new Set();
-    for (var i = 0; i < commentAnchors.length; i++) {
-      var node = resolveAnchor(commentAnchors[i]);
-      if (!node || seen.has(node)) continue;
-      seen.add(node);
-      pinnedNodes.push(node);
-      node.style.outline = "2px solid rgba(13,153,255,0.85)";
-      node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(13,153,255,0.28)";
-    }
   }
 
-  document.addEventListener("mouseover", function(e){
-    if (interactionMode !== "commenting") return;
-    var t = e.target;
-    if (!t || !t.style) return;
-    if (pinnedNodes.indexOf(t) === -1 && t !== activeNode) {
-      t.style.outline = "1px solid rgba(13,153,255,0.28)";
-    }
-  });
-  document.addEventListener("mouseout", function(e){
-    if (interactionMode !== "commenting") return;
-    var t = e.target;
-    if (!t || !t.style) return;
-    if (pinnedNodes.indexOf(t) !== -1) {
-      t.style.outline = "2px solid rgba(13,153,255,0.85)";
-    } else if (t !== activeNode) {
-      t.style.outline = "";
-    }
-  });
   document.addEventListener("click", function(e){
     if (interactionMode !== "commenting") return;
     var el = e.target;
     if (!el || el.nodeType !== 1) return;
+    var rect = el.getBoundingClientRect();
+    var relX = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+    var relY = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
+    relX = Math.max(0, Math.min(1, relX));
+    relY = Math.max(0, Math.min(1, relY));
     e.preventDefault();
     e.stopPropagation();
     window.parent.postMessage({
@@ -131,7 +92,9 @@ const BRIDGE_SCRIPT = `
         selector: simpleSelector(el),
         textContent: el.textContent ? el.textContent.trim().slice(0, 100) : null,
         tagName: el.tagName,
-        xpath: getXPath(el)
+        xpath: getXPath(el),
+        relativeX: relX,
+        relativeY: relY
       }
     }, "*");
   }, true);
@@ -142,15 +105,12 @@ const BRIDGE_SCRIPT = `
     if (e.data.type === "SET_COMMENT_ANCHORS") {
       commentAnchors = Array.isArray(e.data.anchors) ? e.data.anchors : [];
       if (interactionMode === "commenting") applyCommentAnchors();
-      else clearPinned();
       return;
     }
     if (e.data.type === "SET_INTERACTION_MODE") {
       interactionMode = e.data.mode === "commenting" ? "commenting" : "browsing";
       if (interactionMode !== "commenting") {
         document.body.style.cursor = "";
-        clearPinned();
-        clearActive();
       } else {
         applyCommentAnchors();
       }
@@ -183,9 +143,21 @@ const BRIDGE_SCRIPT = `
         var node = resolveAnchor(c.anchor);
         if (node) {
           var rect = node.getBoundingClientRect();
+          var ax = 0.5;
+          var ay = 0.5;
+          if (c.anchor && typeof c.anchor.relativeX === "number" && isFinite(c.anchor.relativeX)) {
+            ax = Math.max(0, Math.min(1, c.anchor.relativeX));
+          }
+          if (c.anchor && typeof c.anchor.relativeY === "number" && isFinite(c.anchor.relativeY)) {
+            ay = Math.max(0, Math.min(1, c.anchor.relativeY));
+          }
+          var pinX = rect.left + rect.width * ax;
+          var pinY = rect.top + rect.height * ay;
           // Clamp to visible viewport; elements scrolled out of view are still
           // reported at their viewport-relative position (may be negative).
           positions[c.id] = {
+            x: pinX,
+            y: pinY,
             left: rect.left,
             top: rect.top,
             width: rect.width,
@@ -198,16 +170,37 @@ const BRIDGE_SCRIPT = `
       window.parent.postMessage({ type: "ANCHOR_POSITIONS", requestId: requestId, positions: positions }, "*");
       return;
     }
+    if (e.data.type === "MATCH_EXISTING_THREAD") {
+      var requestId2 = typeof e.data.requestId === "string" ? e.data.requestId : "match-default";
+      var selectedAnchor = e.data.selectedAnchor || null;
+      var target = resolveAnchor(selectedAnchor);
+      var topLevelComments = Array.isArray(e.data.comments) ? e.data.comments : [];
+      var matchedCommentId = null;
+
+      if (target) {
+        for (var m = 0; m < topLevelComments.length; m++) {
+          var item2 = topLevelComments[m];
+          if (!item2 || !item2.id) continue;
+          var node2 = resolveAnchor(item2.anchor);
+          if (node2 && node2 === target) {
+            matchedCommentId = item2.id;
+            break;
+          }
+        }
+      }
+
+      window.parent.postMessage(
+        { type: "MATCH_EXISTING_THREAD_RESULT", requestId: requestId2, commentId: matchedCommentId },
+        "*",
+      );
+      return;
+    }
     if (e.data.type === "HIGHLIGHT_ELEMENT") {
       if (interactionMode !== "commenting") return;
-      clearActive();
       var anchor = e.data.anchor;
       var node = resolveAnchor(anchor);
       if (node) {
         node.scrollIntoView({ behavior: "smooth", block: "center" });
-        node.style.outline = "2px solid #0066FF";
-        node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(0,102,255,0.38)";
-        activeNode = node;
       }
       return;
     }

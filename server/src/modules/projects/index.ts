@@ -90,6 +90,9 @@ export const projects = new Elysia({
     async ({ user, params, set }) => {
       const html = await ProjectService.getFileHtml(user, params.id, params.fileId);
       set.headers["content-type"] = "text/html; charset=utf-8";
+      set.headers["cache-control"] = "no-store, no-cache, must-revalidate, proxy-revalidate";
+      set.headers.pragma = "no-cache";
+      set.headers.expires = "0";
       return html;
     },
     {
