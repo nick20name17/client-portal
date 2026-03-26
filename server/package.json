@@ -8,19 +8,22 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "elysia": "latest",
+    "@better-auth/drizzle-adapter": "latest",
     "@elysiajs/cors": "latest",
     "@elysiajs/openapi": "latest",
     "@sinclair/typebox": "latest",
     "better-auth": "latest",
-    "@better-auth/drizzle-adapter": "latest",
     "drizzle-orm": "latest",
-    "pg": "latest"
+    "drizzle-typebox": "^0.3.3",
+    "elysia": "latest",
+    "pg": "latest",
+    "resend": "^6.9.4"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.11",
+    "@types/pg": "latest",
     "bun-types": "latest",
-    "drizzle-kit": "latest",
-    "@types/pg": "latest"
+    "drizzle-kit": "latest"
   },
   "module": "src/index.js"
 }

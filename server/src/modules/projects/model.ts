@@ -1,0 +1,56 @@
+import { projectFiles, projectMembers, projects } from "@/db/schema/projects";
+import type { InferSchema } from "@/utils/typebox";
+import { createSelectSchema } from "drizzle-typebox";
+import { t } from "elysia";
+
+const projectSelect = createSelectSchema(projects);
+const projectFileSelect = createSelectSchema(projectFiles);
+const projectMemberSelect = createSelectSchema(projectMembers);
+
+export const ProjectModelSchema = {
+  idParams: t.Object({ id: t.String({ format: "uuid" }) }),
+  fileParams: t.Object({
+    id: t.String({ format: "uuid" }),
+    fileId: t.String({ format: "uuid" }),
+  }),
+  memberParams: t.Object({
+    id: t.String({ format: "uuid" }),
+    userId: t.String(),
+  }),
+  create: t.Object({
+    name: t.String({ minLength: 1 }),
+    description: t.Optional(t.String()),
+    repoUrl: t.String({ minLength: 1 }),
+    companyId: t.String({ format: "uuid" }),
+  }),
+  update: t.Object({
+    name: t.Optional(t.String({ minLength: 1 })),
+    description: t.Optional(t.Union([t.String(), t.Null()])),
+    repoUrl: t.Optional(t.String({ minLength: 1 })),
+  }),
+  addMember: t.Object({
+    userId: t.String(),
+    role: t.Union([t.Literal("manager"), t.Literal("client")]),
+  }),
+  select: projectSelect,
+  listResponse: t.Array(projectSelect),
+  memberList: t.Array(projectMemberSelect),
+  memberSingle: projectMemberSelect,
+  fileList: t.Array(projectFileSelect),
+  syncResponse: t.Object({
+    synced: t.Number(),
+    paths: t.Array(t.String()),
+  }),
+  syncUpstreamError: t.Object({
+    error: t.Literal("GitHub sync failed"),
+    detail: t.String(),
+  }),
+  forbidden: t.Object({ error: t.Literal("Forbidden") }),
+  notFound: t.Object({ error: t.Literal("Not found") }),
+  invalidRepo: t.Object({ error: t.Literal("Invalid repoUrl") }),
+  upstreamFetch: t.Object({ error: t.Literal("Upstream fetch failed") }),
+  memberConflict: t.Object({ error: t.Literal("Already a member") }),
+  ok: t.Object({ ok: t.Literal(true) }),
+} as const;
+
+export type ProjectModel = InferSchema<typeof ProjectModelSchema>;
