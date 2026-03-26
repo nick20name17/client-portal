@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowRight, CheckCircle, RotateCcw, Trash2, X } from "lucide-react";
 
@@ -66,6 +66,7 @@ export function InlineThreadPopover({
 }: InlineThreadPopoverProps) {
   const [replyText, setReplyText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const repliesEndRef = useRef<HTMLDivElement>(null);
 
   const authorName =
     comment.author?.name?.trim() ||
@@ -73,6 +74,10 @@ export function InlineThreadPopover({
     `user-${comment.authorId.slice(0, 6)}`;
   const authorImage = comment.author?.image ?? null;
   const replies = comment.replies ?? [];
+
+  useEffect(() => {
+    repliesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [replies.length]);
 
   async function handleReply() {
     const t = replyText.trim();
@@ -172,12 +177,15 @@ export function InlineThreadPopover({
         </div>
       </div>
 
-      {/* Replies */}
+      {/* Replies — scrollable so many replies don't push the popover off screen */}
       {replies.length > 0 ? (
-        <div className="space-y-2.5 border-t border-border/60 px-3 py-2.5">
-          {replies.map((r) => (
-            <ReplyItem key={r.id} reply={r} />
-          ))}
+        <div className="max-h-48 overflow-y-auto border-t border-border/60">
+          <div className="space-y-2.5 px-3 py-2.5">
+            {replies.map((r) => (
+              <ReplyItem key={r.id} reply={r} />
+            ))}
+            <div ref={repliesEndRef} />
+          </div>
         </div>
       ) : null}
 

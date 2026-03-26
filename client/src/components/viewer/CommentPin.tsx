@@ -47,7 +47,7 @@ export function CommentPin({ comment, x, y, isActive, isOrphaned, replyCount, on
       title={isOrphaned ? "⚠ Element not found" : comment.body.slice(0, 40)}
       onClick={onClick}
       className={cn(
-        "group absolute flex items-center justify-center rounded-full transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "group pointer-events-auto absolute flex items-center justify-center rounded-full transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         isActive && "z-20",
         !isActive && "z-10 hover:z-20",
       )}

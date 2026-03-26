@@ -83,26 +83,48 @@ interface PinPosition {
 }
 
 function computePopoverPosition(
-  x: number,
-  y: number,
+  anchorX: number,
+  anchorY: number,
   overlayWidth: number,
   overlayHeight: number,
   popoverWidth: number,
   popoverHeight: number,
 ): { left: number; top: number } {
-  const offset = 16;
-  const maxLeft = Math.max(8, overlayWidth - popoverWidth - 8);
-  const maxTop = Math.max(8, overlayHeight - popoverHeight - 8);
-  return {
-    left: Math.max(8, Math.min(x + offset, maxLeft)),
-    top: Math.max(8, Math.min(y + offset, maxTop)),
-  };
+  const ow = overlayWidth || 9999;
+  const oh = overlayHeight || 9999;
+  const PIN_RADIUS = 18;
+  const GAP = 8;
+  const EDGE_PAD = 8;
+
+  const rightSpace = ow - anchorX - EDGE_PAD;
+  const leftSpace = anchorX - EDGE_PAD;
+
+  // Prefer whichever side has enough room; fallback to better side when tight.
+  let left: number;
+  if (rightSpace >= popoverWidth + PIN_RADIUS + GAP) {
+    left = anchorX + PIN_RADIUS + GAP;
+  } else if (leftSpace >= popoverWidth + PIN_RADIUS + GAP) {
+    left = anchorX - PIN_RADIUS - GAP - popoverWidth;
+  } else if (rightSpace >= leftSpace) {
+    left = anchorX + PIN_RADIUS + GAP;
+  } else {
+    left = anchorX - PIN_RADIUS - GAP - popoverWidth;
+  }
+  left = Math.max(EDGE_PAD, Math.min(left, ow - popoverWidth - EDGE_PAD));
+
+  // Vertically: center on the anchor, then clamp to stay inside the overlay
+  let top = anchorY - popoverHeight / 2;
+  top = Math.max(EDGE_PAD, Math.min(top, oh - popoverHeight - EDGE_PAD));
+
+  return { left, top };
 }
 
 export function ProjectViewer({ projectId }: { projectId: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const viewerRootRef = useRef<HTMLDivElement>(null);
+  const ghostPopoverRef = useRef<HTMLDivElement>(null);
+  const activePopoverRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   const { user: authUser } = useAuth();
@@ -123,10 +145,18 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [htmlLoading, setHtmlLoading] = useState(false);
   const [htmlError, setHtmlError] = useState<string | null>(null);
 
-  // Pin positions fetched from bridge
+  // Raw iframe-viewport coords from bridge — converted to overlay coords at render time
   const [pinPositions, setPinPositions] = useState<
-    Record<string, { left: number; top: number; width: number; height: number; scrollWidth: number; scrollHeight: number }>
+    Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }>
   >({});
+  // Raw ghost coords (set at message time, converted at render time)
+  const [ghostRaw, setGhostRaw] = useState<{
+    cx: number; cy: number; scrollWidth: number; scrollHeight: number; anchor: Anchor;
+  } | null>(null);
+  // Iframe rect version counter — incremented by ResizeObserver to force re-render when iframe moves
+  const [iframeVersion, setIframeVersion] = useState(0);
+  const [ghostPopoverSize, setGhostPopoverSize] = useState({ width: 288, height: 260 });
+  const [activePopoverSize, setActivePopoverSize] = useState({ width: 320, height: 380 });
 
   // Active thread popover
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -137,7 +167,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     parseAsStringLiteral(["browsing", "commenting"]).withDefault("browsing"),
   );
   const [commentMode, setCommentMode] = useState(false);
-  const [ghostPin, setGhostPin] = useState<{ x: number; y: number; anchor: Anchor } | null>(null);
+  // Pending anchor waiting for position resolution — stored in a ref to avoid stale closure race
+  const pendingGhostAnchorRef = useRef<Anchor | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
@@ -192,6 +223,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     [comments],
   );
 
+  const topLevelCommentIdByAnchorKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of comments ?? []) {
+      if (c.parentId) continue;
+      const key = anchorKey(c.anchor as Anchor);
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, c.id);
+    }
+    return map;
+  }, [comments]);
+
   const handleAnchorResolution = useCallback((resolved: Record<string, boolean>) => {
     setAnchorResolvedMap(resolved);
   }, []);
@@ -212,7 +254,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }, "*");
   }, [comments, interactionMode, isFullscreen]);
 
-  // Listen for ANCHOR_POSITIONS response
+  // Listen for ANCHOR_POSITIONS response — store raw iframe coords, convert at render time
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (
@@ -221,12 +263,21 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         e.data.positions &&
         typeof e.data.positions === "object"
       ) {
-        setPinPositions(
-          e.data.positions as Record<
-            string,
-            { left: number; top: number; width: number; height: number; scrollWidth: number; scrollHeight: number }
-          >,
-        );
+        const raw = e.data.positions as Record<
+          string,
+          { left: number; top: number; width: number; height: number; scrollWidth: number; scrollHeight: number }
+        >;
+        const next: Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }> = {};
+        for (const id of Object.keys(raw)) {
+          const p = raw[id];
+          next[id] = {
+            cx: p.left + p.width / 2,
+            cy: p.top + p.height / 2,
+            scrollWidth: p.scrollWidth,
+            scrollHeight: p.scrollHeight,
+          };
+        }
+        setPinPositions(next);
       }
     }
     window.addEventListener("message", onMsg);
@@ -259,46 +310,119 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return () => ro.disconnect();
   }, [requestAnchorPositions]);
 
-  // Compute scaled pin positions
+  // ResizeObserver on iframe — detects sidebar open/close animation moving the iframe.
+  // Bumps iframeVersion to force re-render so raw coords get re-mapped with fresh rects.
+  useEffect(() => {
+    const el = iframeRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setIframeVersion((v) => v + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Sidebar open/close can move iframe with transforms without resizing it.
+  // Watch its rect briefly after known layout shifts and bump version when it changes.
+  useEffect(() => {
+    if (interactionMode !== "commenting" || isFullscreen) return;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    let raf = 0;
+    let frame = 0;
+    let prev = iframe.getBoundingClientRect();
+    const maxFrames = 36; // ~600ms at 60fps; enough for sidebar animation
+    const step = () => {
+      frame += 1;
+      const next = iframe.getBoundingClientRect();
+      if (
+        Math.abs(next.left - prev.left) > 0.25 ||
+        Math.abs(next.top - prev.top) > 0.25 ||
+        Math.abs(next.width - prev.width) > 0.25 ||
+        Math.abs(next.height - prev.height) > 0.25
+      ) {
+        prev = next;
+        setIframeVersion((v) => v + 1);
+      }
+      if (frame < maxFrames) raf = window.requestAnimationFrame(step);
+    };
+    raf = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(raf);
+  }, [commentsOpen, interactionMode, isFullscreen]);
+
+  // Convert raw iframe-viewport center coords → overlay-relative px at render time.
+  // Reads live rects so positions stay correct after any layout shift (sidebar, resize).
+  const rawToOverlay = useCallback(
+    (cx: number, cy: number, scrollWidth: number, scrollHeight: number): { x: number; y: number } => {
+      const overlay = overlayRef.current;
+      const iframe = iframeRef.current;
+      if (!overlay || !iframe) return { x: cx, y: cy };
+      const oRect = overlay.getBoundingClientRect();
+      const iRect = iframe.getBoundingClientRect();
+      const scaleX = scrollWidth > 0 ? iRect.width / scrollWidth : 1;
+      const scaleY = scrollHeight > 0 ? iRect.height / scrollHeight : 1;
+      const dx = iRect.left - oRect.left;
+      const dy = iRect.top - oRect.top;
+      return {
+        x: Math.round(cx * scaleX + dx),
+        y: Math.round(cy * scaleY + dy),
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [iframeVersion], // re-memoize when iframe moves
+  );
+
+  // Ghost pin derived from raw coords — updates whenever iframe moves
+  const ghostPin = useMemo(() => {
+    if (!ghostRaw) return null;
+    const { x, y } = rawToOverlay(ghostRaw.cx, ghostRaw.cy, ghostRaw.scrollWidth, ghostRaw.scrollHeight);
+    return { x, y, anchor: ghostRaw.anchor };
+  }, [ghostRaw, rawToOverlay]);
+
+  useEffect(() => {
+    const el = ghostPopoverRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setGhostPopoverSize({ width: el.offsetWidth || 288, height: el.offsetHeight || 260 });
+    });
+    setGhostPopoverSize({ width: el.offsetWidth || 288, height: el.offsetHeight || 260 });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ghostPin]);
+
+  useEffect(() => {
+    const el = activePopoverRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setActivePopoverSize({ width: el.offsetWidth || 320, height: el.offsetHeight || 380 });
+    });
+    setActivePopoverSize({ width: el.offsetWidth || 320, height: el.offsetHeight || 380 });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [activeThreadId]);
+
+  // Compute pin positions — converted fresh each render so sidebar moves are reflected
   const pins: PinPosition[] = useMemo(() => {
     if (!comments) return [];
-    const overlay = overlayRef.current;
-    const displayW = overlay?.clientWidth ?? 0;
-    const displayH = overlay?.clientHeight ?? 0;
 
     const result: PinPosition[] = [];
     let orphanedIndex = 0;
 
     for (const c of comments) {
-      if (c.parentId) continue; // only top-level
+      if (c.parentId) continue;
       const pos = pinPositions[c.id];
       const hasAnchor = c.anchor && (c.anchor.selector || c.anchor.dataComment);
-
-      if (!hasAnchor) continue; // no anchor at all, skip
+      if (!hasAnchor) continue;
 
       if (!pos) {
-        // orphaned — anchor not found in DOM
-        result.push({
-          commentId: c.id,
-          x: 24 + orphanedIndex * 36,
-          y: 24,
-          orphaned: true,
-        });
+        result.push({ commentId: c.id, x: 24 + orphanedIndex * 36, y: 24, orphaned: true });
         orphanedIndex++;
         continue;
       }
 
-      const scaleX = displayW / (pos.scrollWidth || displayW);
-      const scaleY = displayH / (pos.scrollHeight || displayH);
-      result.push({
-        commentId: c.id,
-        x: (pos.left + pos.width / 2) * scaleX,
-        y: (pos.top + pos.height / 2) * scaleY,
-        orphaned: false,
-      });
+      const { x, y } = rawToOverlay(pos.cx, pos.cy, pos.scrollWidth, pos.scrollHeight);
+      result.push({ commentId: c.id, x, y, orphaned: false });
     }
     return result;
-  }, [comments, pinPositions]);
+  }, [comments, pinPositions, rawToOverlay]);
 
   const sendHighlight = useCallback((a: Anchor | null) => {
     const win = iframeRef.current?.contentWindow;
@@ -313,65 +437,69 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       if (e.data?.type === "ELEMENT_SELECTED") {
         const anchor = e.data.anchor as Anchor;
         if (interactionMode !== "commenting" || isFullscreen) return;
-        const win = iframeRef.current?.contentWindow;
-        if (win) {
-          win.postMessage({
-            type: "GET_ANCHOR_POSITIONS",
-            requestId: "ghost",
-            comments: [{ id: "__ghost__", anchor }],
-          }, "*");
+
+        // If this element already has a top-level comment, open that thread instead of creating new.
+        const existingThreadId = topLevelCommentIdByAnchorKey.get(anchorKey(anchor));
+        if (existingThreadId) {
+          setCommentMode(false);
+          setGhostRaw(null);
+          pendingGhostAnchorRef.current = null;
+          setActiveThreadId(existingThreadId);
+          const existing = comments?.find((c) => c.id === existingThreadId);
+          if (existing) sendHighlight(existing.anchor as Anchor);
+          iframeRef.current?.contentWindow?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
+          return;
         }
-        setGhostPin({ x: 0, y: 0, anchor });
+
+        // Store anchor in ref so the position handler can read it without stale closure
+        pendingGhostAnchorRef.current = anchor;
+        setGhostRaw(null); // hide any previous ghost while we wait for new position
         setCommentMode(false);
         iframeRef.current?.contentWindow?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
+        iframeRef.current?.contentWindow?.postMessage({
+          type: "GET_ANCHOR_POSITIONS",
+          requestId: "ghost",
+          comments: [{ id: "__ghost__", anchor }],
+        }, "*");
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [interactionMode, isFullscreen]);
+  }, [interactionMode, isFullscreen, topLevelCommentIdByAnchorKey, comments, sendHighlight]);
 
-  // Handle ghost pin position from bridge
+  // Handle ghost pin position — store raw iframe coords
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (
         e.data?.type === "ANCHOR_POSITIONS" &&
         e.data.requestId === "ghost" &&
-        e.data.positions?.__ghost__ &&
-        ghostPin
+        e.data.positions?.__ghost__
       ) {
+        const anchor = pendingGhostAnchorRef.current;
+        if (!anchor) return;
         const pos = e.data.positions.__ghost__ as {
-          left: number;
-          top: number;
-          width: number;
-          height: number;
-          scrollWidth: number;
-          scrollHeight: number;
+          left: number; top: number; width: number; height: number;
+          scrollWidth: number; scrollHeight: number;
         };
-        const overlay = overlayRef.current;
-        const displayW = overlay?.clientWidth ?? 1;
-        const displayH = overlay?.clientHeight ?? 1;
-        const scaleX = displayW / (pos.scrollWidth || displayW);
-        const scaleY = displayH / (pos.scrollHeight || displayH);
-        setGhostPin((prev) =>
-          prev
-            ? {
-                ...prev,
-                x: (pos.left + pos.width / 2) * scaleX,
-                y: (pos.top + pos.height / 2) * scaleY,
-              }
-            : null,
-        );
+        pendingGhostAnchorRef.current = null;
+        setGhostRaw({
+          cx: pos.left + pos.width / 2,
+          cy: pos.top + pos.height / 2,
+          scrollWidth: pos.scrollWidth,
+          scrollHeight: pos.scrollHeight,
+          anchor,
+        });
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [ghostPin]);
+  }, []);
 
   // Enter comment mode: set crosshair cursor in iframe
   function enterCommentMode() {
     if (interactionMode !== "commenting") return;
     setCommentMode(true);
-    setGhostPin(null);
+    setGhostRaw(null);
     setActiveThreadId(null);
     iframeRef.current?.contentWindow?.postMessage({ type: "SET_CURSOR", cursor: "crosshair" }, "*");
     if (isMobile) setMobileSheet(true);
@@ -379,8 +507,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   function cancelCommentMode() {
     setCommentMode(false);
-    setGhostPin(null);
+    setGhostRaw(null);
     setSelectedTagIds([]);
+    pendingGhostAnchorRef.current = null;
     iframeRef.current?.contentWindow?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
   }
 
@@ -405,7 +534,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (!isFullscreen) return;
     setCommentMode(false);
-    setGhostPin(null);
+    setGhostRaw(null);
     setActiveThreadId(null);
     setCommentsOpen(false);
     setMobileSheet(false);
@@ -419,7 +548,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       const row = (await createComment.mutateAsync({
         fileId,
         body,
-        anchor: ghostPin?.anchor ?? emptyAnchor(),
+        anchor: ghostRaw?.anchor ?? emptyAnchor(),
         parentId: undefined,
       })) as { id: string };
       const id = row.id;
@@ -427,7 +556,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         await addTag.mutateAsync({ commentId: id, tagId });
       }
       toast.success("Comment added");
-      setGhostPin(null);
+      setGhostRaw(null);
       setSelectedTagIds([]);
       setActiveThreadId(id);
     } catch (e) {
@@ -504,7 +633,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
   }
 
-  const activeComment = activeThreadId ? (comments?.find((c) => c.id === activeThreadId) ?? null) : null;
   const frameInteractionMode: "browsing" | "commenting" =
     interactionMode === "commenting" && !isFullscreen ? "commenting" : "browsing";
 
@@ -691,32 +819,26 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     onFrameReady={handleFrameReady}
                   />
 
-                  {/* Pin overlay — sits on top of the iframe artboard */}
+                  {/* Pin overlay — sits exactly on top of the iframe artboard */}
                   {interactionMode === "commenting" && !isFullscreen && !htmlLoading && !htmlError && html ? (
                     <div
                       ref={overlayRef}
-                      className="pointer-events-none absolute inset-0 m-3 md:m-4"
-                      style={{
-                        // match the artboard chrome padding
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                      }}
+                      className="pointer-events-none absolute inset-0"
                     >
                       {/* Ghost pin for new comment */}
-                      {ghostPin && ghostPin.x > 0 ? (
+                      {ghostPin ? (
                         <>
                           <GhostPin x={ghostPin.x} y={ghostPin.y} />
                           <div
+                            ref={ghostPopoverRef}
                             className="pointer-events-auto absolute z-40"
                             style={computePopoverPosition(
                               ghostPin.x,
                               ghostPin.y,
                               overlaySize.width,
                               overlaySize.height,
-                              288,
-                              260,
+                              ghostPopoverSize.width,
+                              ghostPopoverSize.height,
                             )}
                           >
                             <NewCommentComposePopover
@@ -736,51 +858,59 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                         const comment = comments?.find((c) => c.id === pin.commentId);
                         if (!comment) return null;
                         const replyCount = comment.replies?.length ?? 0;
-                        const isActive = activeThreadId === pin.commentId;
 
                         return (
-                          <div key={pin.commentId} className="pointer-events-auto absolute" style={{ left: 0, top: 0 }}>
-                            <CommentPin
-                              comment={comment}
-                              x={pin.x}
-                              y={pin.y}
-                              isActive={isActive}
-                              isOrphaned={pin.orphaned}
-                              replyCount={replyCount}
-                              onClick={() => {
-                                setActiveThreadId((prev) => (prev === pin.commentId ? null : pin.commentId));
-                                sendHighlight(comment.anchor as Anchor);
-                              }}
-                            />
-
-                            {/* Inline thread popover */}
-                            {isActive ? (
-                              <div
-                                className="absolute z-50"
-                                style={computePopoverPosition(
-                                  pin.x,
-                                  pin.y,
-                                  overlaySize.width,
-                                  overlaySize.height,
-                                  320,
-                                  360,
-                                )}
-                              >
-                                <InlineThreadPopover
-                                  comment={comment}
-                                  currentUser={user}
-                                  canComment={interactionMode === "commenting"}
-                                  onClose={() => setActiveThreadId(null)}
-                                  onResolve={onResolve}
-                                  onDelete={onDelete}
-                                  onReply={onReply}
-                                  isOrphaned={pin.orphaned}
-                                />
-                              </div>
-                            ) : null}
-                          </div>
+                          <CommentPin
+                            key={pin.commentId}
+                            comment={comment}
+                            x={pin.x}
+                            y={pin.y}
+                            isActive={activeThreadId === pin.commentId}
+                            isOrphaned={pin.orphaned}
+                            replyCount={replyCount}
+                            onClick={() => {
+                              setGhostRaw(null); // dismiss compose if open
+                              pendingGhostAnchorRef.current = null;
+                              setActiveThreadId((prev) => (prev === pin.commentId ? null : pin.commentId));
+                              sendHighlight(comment.anchor as Anchor);
+                            }}
+                          />
                         );
                       })}
+
+                      {/* Active thread popover — rendered once, sibling to pins so position is relative to overlay */}
+                      {(() => {
+                        if (!activeThreadId) return null;
+                        const activePin = pins.find((p) => p.commentId === activeThreadId);
+                        const activeComment = comments?.find((c) => c.id === activeThreadId);
+                        if (!activePin || !activeComment) return null;
+                        return (
+                          <div
+                            key={activeThreadId}
+                            ref={activePopoverRef}
+                            className="pointer-events-auto absolute z-50"
+                            style={computePopoverPosition(
+                              activePin.x,
+                              activePin.y,
+                              overlaySize.width,
+                              overlaySize.height,
+                              activePopoverSize.width,
+                              activePopoverSize.height,
+                            )}
+                          >
+                            <InlineThreadPopover
+                              comment={activeComment}
+                              currentUser={user}
+                              canComment={interactionMode === "commenting"}
+                              onClose={() => setActiveThreadId(null)}
+                              onResolve={onResolve}
+                              onDelete={onDelete}
+                              onReply={onReply}
+                              isOrphaned={activePin.orphaned}
+                            />
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : null}
                 </div>

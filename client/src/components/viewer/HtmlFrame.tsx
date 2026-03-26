@@ -104,13 +104,19 @@ const BRIDGE_SCRIPT = `
     if (interactionMode !== "commenting") return;
     var t = e.target;
     if (!t || !t.style) return;
-    t.style.outline = "1px solid rgba(13,153,255,0.28)";
+    if (pinnedNodes.indexOf(t) === -1 && t !== activeNode) {
+      t.style.outline = "1px solid rgba(13,153,255,0.28)";
+    }
   });
   document.addEventListener("mouseout", function(e){
     if (interactionMode !== "commenting") return;
     var t = e.target;
     if (!t || !t.style) return;
-    t.style.outline = "";
+    if (pinnedNodes.indexOf(t) !== -1) {
+      t.style.outline = "2px solid rgba(13,153,255,0.85)";
+    } else if (t !== activeNode) {
+      t.style.outline = "";
+    }
   });
   document.addEventListener("click", function(e){
     if (interactionMode !== "commenting") return;
@@ -167,21 +173,25 @@ const BRIDGE_SCRIPT = `
       var comments = Array.isArray(e.data.comments) ? e.data.comments : [];
       var requestId = typeof e.data.requestId === "string" ? e.data.requestId : "default";
       var positions = {};
-      var scrollW = document.documentElement.scrollWidth || document.body.scrollWidth || 1;
-      var scrollH = document.documentElement.scrollHeight || document.body.scrollHeight || 1;
+      // Use iframe viewport dimensions as the coordinate space so the overlay
+      // (which covers the same viewport) can map positions 1:1 without scaling.
+      var viewW = window.innerWidth || document.documentElement.clientWidth || 1;
+      var viewH = window.innerHeight || document.documentElement.clientHeight || 1;
       for (var k = 0; k < comments.length; k++) {
         var c = comments[k];
         if (!c || !c.id) continue;
         var node = resolveAnchor(c.anchor);
         if (node) {
           var rect = node.getBoundingClientRect();
+          // Clamp to visible viewport; elements scrolled out of view are still
+          // reported at their viewport-relative position (may be negative).
           positions[c.id] = {
-            left: rect.left + window.scrollX,
-            top: rect.top + window.scrollY,
+            left: rect.left,
+            top: rect.top,
             width: rect.width,
             height: rect.height,
-            scrollWidth: scrollW,
-            scrollHeight: scrollH
+            scrollWidth: viewW,
+            scrollHeight: viewH
           };
         }
       }
