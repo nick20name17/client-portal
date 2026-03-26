@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Anchor, Comment, Tag } from "@/types";
 
+function anchorKey(anchor: Anchor | null | undefined): string {
+  if (!anchor) return "";
+  if (anchor.dataComment) return `dc:${anchor.dataComment}`;
+  if (anchor.selector) return `sel:${anchor.selector}`;
+  return "";
+}
+
 export function CommentsSidebar({
   comments,
   loading,
@@ -26,6 +33,8 @@ export function CommentsSidebar({
   onResolve,
   onHover,
   activeThreadId,
+  focusedAnchorKey,
+  onClearFocus,
   onClose,
 }: {
   comments: Comment[] | undefined;
@@ -43,6 +52,8 @@ export function CommentsSidebar({
   onResolve: (id: string, resolved: boolean) => void | Promise<void>;
   onHover: (anchor: Anchor | null) => void;
   activeThreadId: string | null;
+  focusedAnchorKey: string | null;
+  onClearFocus: () => void;
   onClose?: () => void;
 }) {
   const [filter, setFilter] = useState<"all" | "open" | "resolved">("all");
@@ -52,6 +63,7 @@ export function CommentsSidebar({
   const filtered = useMemo(() => {
     if (!comments) return [];
     let rows = comments;
+    if (focusedAnchorKey) rows = rows.filter((c) => anchorKey(c.anchor as Anchor) === focusedAnchorKey);
     if (filter === "open") rows = rows.filter((c) => !c.resolved);
     if (filter === "resolved") rows = rows.filter((c) => c.resolved);
     if (q.trim()) {
@@ -59,7 +71,7 @@ export function CommentsSidebar({
       rows = rows.filter((c) => c.body.toLowerCase().includes(s));
     }
     return rows;
-  }, [comments, filter, q]);
+  }, [comments, filter, q, focusedAnchorKey]);
 
   useEffect(() => {
     if (!activeThreadId) return;
@@ -81,6 +93,14 @@ export function CommentsSidebar({
         ) : null}
       </div>
       <div className="space-y-2 border-b border-border p-3">
+        {focusedAnchorKey ? (
+          <div className="flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs">
+            <span className="font-medium text-primary">Showing comments for selected pin</span>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onClearFocus}>
+              Show all
+            </Button>
+          </div>
+        ) : null}
         <Tabs value={filter} onValueChange={(v) => setFilter(v as "all" | "open" | "resolved")}>
           <TabsList className="w-full">
             <TabsTrigger className="flex-1" value="all">

@@ -17,8 +17,8 @@ const BRIDGE_SCRIPT = `
     for (var i = 0; i < pinnedNodes.length; i++) {
       var node = pinnedNodes[i];
       if (!node || !node.style) continue;
+      node.style.outline = "";
       node.style.boxShadow = "";
-      node.style.backgroundColor = "";
     }
     pinnedNodes = [];
   }
@@ -101,8 +101,8 @@ const BRIDGE_SCRIPT = `
       if (!node || seen.has(node)) continue;
       seen.add(node);
       pinnedNodes.push(node);
-      node.style.boxShadow = "inset 0 0 0 2px rgba(249,115,22,0.85)";
-      node.style.backgroundColor = "rgba(249,115,22,0.12)";
+      node.style.outline = "2px solid rgba(249,115,22,0.95)";
+      node.style.boxShadow = "0 0 0 3px #fff, 0 0 0 6px rgba(249,115,22,0.35)";
     }
   }
   function pinPositionTarget(el){
@@ -126,6 +126,7 @@ const BRIDGE_SCRIPT = `
       pin.setAttribute("aria-label", "Open comment thread");
       pin.dataset.commentPin = "1";
       pin.dataset.commentId = String(row.commentId || "");
+      pin.dataset.anchorKey = String(row.anchorKey || "");
       pin.style.position = "absolute";
       pin.style.top = pos.top + "px";
       pin.style.left = pos.left + "px";
@@ -145,7 +146,8 @@ const BRIDGE_SCRIPT = `
         evt.preventDefault();
         evt.stopPropagation();
         var id = this && this.dataset ? this.dataset.commentId : "";
-        window.parent.postMessage({ type: "PIN_SELECTED", commentId: id }, "*");
+        var key = this && this.dataset ? this.dataset.anchorKey : "";
+        window.parent.postMessage({ type: "PIN_SELECTED", commentId: id, anchorKey: key }, "*");
       }, true);
       pinNodes.push(pin);
       document.body.appendChild(pin);
@@ -231,7 +233,7 @@ export const HtmlFrame = forwardRef<
     loading: boolean;
     error: string | null;
     commentAnchors: Anchor[];
-    commentPins: { commentId: string; anchor: Anchor; count: number }[];
+    commentPins: { commentId: string; anchor: Anchor; count: number; anchorKey: string }[];
   }
 >(
   function HtmlFrame({ html, loading, error, commentAnchors, commentPins }, ref) {

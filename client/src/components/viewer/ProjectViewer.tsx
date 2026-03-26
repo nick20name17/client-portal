@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, MessageCircle, RefreshCw, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,6 +10,14 @@ import { HtmlFrame } from "@/components/viewer/HtmlFrame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarInset,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -62,7 +70,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [mobileSheet, setMobileSheet] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(true);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [focusedAnchorKey, setFocusedAnchorKey] = useState<string | null>(null);
 
   useProjectSSE(projectId);
 
@@ -109,17 +119,24 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, [comments]);
   const commentPins = useMemo(() => {
     const rows = comments ?? [];
-    const grouped = new Map<string, { commentId: string; anchor: Anchor; count: number }>();
+    const grouped = new Map<string, { commentId: string; anchor: Anchor; count: number; anchorKey: string }>();
     for (const c of rows) {
       const a = c.anchor as Anchor;
       const key = anchorKey(a);
       if (!key) continue;
       const found = grouped.get(key);
       if (found) found.count += 1;
-      else grouped.set(key, { commentId: c.id, anchor: a, count: 1 });
+      else grouped.set(key, { commentId: c.id, anchor: a, count: 1, anchorKey: key });
     }
     return Array.from(grouped.values());
   }, [comments]);
+
+  const sendHighlight = useCallback((a: Anchor | null) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    if (a) win.postMessage({ type: "HIGHLIGHT_ELEMENT", anchor: a }, "*");
+    else win.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
+  }, []);
 
   useEffect(() => {
     function onMsg(e: MessageEvent) {
@@ -128,28 +145,25 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         setFormOpen(true);
         setReplyParentId(null);
         setActiveThreadId(null);
+        setFocusedAnchorKey(null);
         if (isMobile) setMobileSheet(true);
       }
       if (e.data?.type === "PIN_SELECTED") {
         const id = typeof e.data.commentId === "string" ? e.data.commentId : null;
+        const key = typeof e.data.anchorKey === "string" ? e.data.anchorKey : null;
         setActiveThreadId(id);
+        setFocusedAnchorKey(key);
         if (id) {
           const pin = commentPins.find((x) => x.commentId === id);
           if (pin) sendHighlight(pin.anchor);
           if (isMobile) setMobileSheet(true);
+          else setCommentsOpen(true);
         }
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
   }, [commentPins, isMobile, sendHighlight]);
-
-  const sendHighlight = useCallback((a: Anchor | null) => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    if (a) win.postMessage({ type: "HIGHLIGHT_ELEMENT", anchor: a }, "*");
-    else win.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
-  }, []);
 
   async function onSubmit(body: string) {
     if (!fileId) {
@@ -198,6 +212,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setAnchor(null);
     setFormOpen(true);
     setActiveThreadId(null);
+    setFocusedAnchorKey(null);
     if (isMobile) setMobileSheet(true);
   }
 
@@ -227,8 +242,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-background">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
+    <SidebarProvider
+      open={commentsOpen}
+      onOpenChange={setCommentsOpen}
+      style={{ "--sidebar-width": "22.5rem" } as CSSProperties}
+    >
+      <SidebarInset className="h-[100dvh] overflow-hidden bg-background">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
         <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
           <Link href="/" aria-label="Back">
             <ArrowLeft className="size-4" />
@@ -289,11 +309,18 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 onResolve={onResolve}
                 onHover={sendHighlight}
                 activeThreadId={activeThreadId}
+                focusedAnchorKey={focusedAnchorKey}
+                onClearFocus={() => setFocusedAnchorKey(null)}
                 onClose={() => setMobileSheet(false)}
               />
             </SheetContent>
           </Sheet>
-        ) : null}
+        ) : (
+          <SidebarTrigger
+            className="hidden lg:inline-flex"
+            aria-label="Toggle comments sidebar"
+          />
+        )}
       </header>
 
       {files && files.length > 1 ? (
@@ -313,8 +340,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1 p-3">
+        <div className="flex min-h-0 flex-1">
+          <div className="relative min-w-0 flex-1 p-3">
           {filesLoading ? (
             <p className="text-sm text-muted-foreground">Loading files…</p>
           ) : !files?.length ? (
@@ -329,9 +356,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               commentPins={commentPins}
             />
           )}
+          </div>
         </div>
-        {!isMobile ? (
-          <div className="hidden w-[360px] shrink-0 lg:block">
+      </SidebarInset>
+      {!isMobile ? (
+        <Sidebar side="right" collapsible="offcanvas" className="top-12 border-l border-border">
+          <SidebarContent>
             <CommentsSidebar
               comments={comments}
               loading={commentsLoading}
@@ -348,10 +378,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               onResolve={onResolve}
               onHover={sendHighlight}
               activeThreadId={activeThreadId}
+              focusedAnchorKey={focusedAnchorKey}
+              onClearFocus={() => setFocusedAnchorKey(null)}
             />
-          </div>
-        ) : null}
-      </div>
-    </div>
+          </SidebarContent>
+          <SidebarRail />
+        </Sidebar>
+      ) : null}
+    </SidebarProvider>
   );
 }
