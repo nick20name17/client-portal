@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
-import { Filter, MessageSquarePlus, MoreHorizontal, Search, X } from "lucide-react";
+import { formatDistanceToNowStrict } from "date-fns";
+import { AlertTriangle, CheckCircle2, Filter, MessageSquarePlus, MoreHorizontal, Search, X } from "lucide-react";
 
 import { TagBadge } from "@/components/comments/TagBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import type { Anchor, Comment, Tag } from "@/types";
+import type { Anchor, Comment, Tag, User } from "@/types";
 
 function anchorKey(anchor: Anchor | null | undefined): string {
   if (!anchor) return "";
@@ -27,24 +27,49 @@ function anchorKey(anchor: Anchor | null | undefined): string {
   return "";
 }
 
-function commentAuthorLabel(comment: Comment): string {
+function commentAuthorLabel(comment: Comment, currentUser?: User | null): string {
   const fromName = comment.author?.name?.trim();
   if (fromName) return fromName;
+  if (currentUser && comment.authorId === currentUser.id && currentUser.name?.trim()) {
+    return currentUser.name.trim();
+  }
   const fromEmail = comment.author?.email?.trim();
   if (fromEmail) return fromEmail.split("@")[0] || fromEmail;
+  if (currentUser && comment.authorId === currentUser.id && currentUser.email?.trim()) {
+    const local = currentUser.email.trim().split("@")[0];
+    if (local) return local;
+  }
   return `user-${comment.authorId.slice(0, 6)}`;
+}
+
+function formatRelativeShort(date: Date): string {
+  const raw = formatDistanceToNowStrict(date, { addSuffix: true });
+  return raw
+    .replace(" seconds", " sec")
+    .replace(" second", " sec")
+    .replace(" minutes", " min")
+    .replace(" minute", " min")
+    .replace(" hours", " hr")
+    .replace(" hour", " hr")
+    .replace(" days", " d")
+    .replace(" day", " d")
+    .replace(" months", " mo")
+    .replace(" month", " mo")
+    .replace(" years", " yr")
+    .replace(" year", " yr");
 }
 
 interface ThreadCardProps {
   comment: Comment;
+  currentUser?: User | null;
   isActive: boolean;
   isOrphaned: boolean;
   onClick: () => void;
   onHover: (anchor: Anchor | null) => void;
 }
 
-function ThreadCard({ comment, isActive, isOrphaned, onClick, onHover }: ThreadCardProps) {
-  const authorName = commentAuthorLabel(comment);
+function ThreadCard({ comment, currentUser, isActive, isOrphaned, onClick, onHover }: ThreadCardProps) {
+  const authorName = commentAuthorLabel(comment, currentUser);
   const authorImage = comment.author?.image ?? null;
   const replyCount = comment.replies?.length ?? 0;
 
@@ -53,14 +78,14 @@ function ThreadCard({ comment, isActive, isOrphaned, onClick, onHover }: ThreadC
       type="button"
       data-comment-root-id={comment.id}
       className={cn(
-        "group w-full rounded-lg border bg-card text-left shadow-sm transition-all duration-100 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group w-full rounded-2xl border bg-card/75 text-left shadow-sm transition-all duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isActive
-          ? "border-primary/40 bg-accent ring-1 ring-primary/20"
+          ? "border-primary/40 bg-accent/40 ring-1 ring-primary/20"
           : "border-border hover:border-border/80",
-        comment.resolved && "opacity-70",
+        comment.resolved && "bg-muted/45",
       )}
       style={{
-        borderLeftWidth: 3,
+        borderLeftWidth: 4,
         borderLeftColor: isOrphaned
           ? "var(--muted-foreground)"
           : comment.resolved
@@ -71,29 +96,42 @@ function ThreadCard({ comment, isActive, isOrphaned, onClick, onHover }: ThreadC
       onMouseEnter={() => onHover(comment.anchor as Anchor)}
       onMouseLeave={() => onHover(null)}
     >
-      <div className="px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <UserAvatar name={authorName} image={authorImage} className="size-6 shrink-0" />
-          <span className="min-w-0 flex-1 truncate text-xs font-medium">{authorName}</span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">
-            {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-          </span>
+      <div className="px-3.5 py-3">
+        <div className="mb-2 flex items-center gap-2">
+          <UserAvatar name={authorName} image={authorImage} className="size-9 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 truncate text-base font-semibold leading-tight">{authorName}</span>
+              <span className="shrink-0 text-sm text-muted-foreground">
+                {formatRelativeShort(new Date(comment.createdAt))}
+              </span>
+            </div>
+            <p className="truncate text-xs text-muted-foreground/90">Thread #{comment.id.slice(0, 3)}</p>
+          </div>
+          {comment.resolved ? (
+            <CheckCircle2 className="size-4 shrink-0 text-[oklch(0.527_0.154_150.069)]" />
+          ) : null}
+          {isOrphaned ? (
+            <AlertTriangle className="size-4 shrink-0 text-amber-500" />
+          ) : null}
         </div>
-        <p className="mt-1.5 line-clamp-1 text-xs text-foreground/80">{comment.body}</p>
+        <p className="line-clamp-2 text-sm text-foreground/90">{comment.body}</p>
         {isOrphaned ? (
-          <p className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+          <p className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
             ⚠ Element not found
           </p>
         ) : null}
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className="mt-2.5 flex items-center gap-1.5">
           {comment.tags?.map((t) => (
             <TagBadge key={t.id} tag={t} className="text-[10px]" />
           ))}
           {replyCount > 0 ? (
-            <span className="ml-auto flex items-center gap-0.5 text-[10px] text-muted-foreground">
-              💬 {replyCount} {replyCount === 1 ? "reply" : "replies"}
+            <span className="ml-auto text-sm font-medium text-primary">
+              {replyCount} {replyCount === 1 ? "reply" : "replies"}
             </span>
-          ) : null}
+          ) : (
+            <span className="ml-auto text-xs text-muted-foreground">No replies</span>
+          )}
         </div>
       </div>
     </button>
@@ -102,6 +140,7 @@ function ThreadCard({ comment, isActive, isOrphaned, onClick, onHover }: ThreadC
 
 export function CommentsSidebar({
   comments,
+  currentUser,
   loading,
   tagOptions,
   onAddComment,
@@ -114,6 +153,7 @@ export function CommentsSidebar({
   anchorResolvedMap,
 }: {
   comments: Comment[] | undefined;
+  currentUser?: User | null;
   loading: boolean;
   tagOptions: Tag[];
   onAddComment: () => void;
@@ -137,7 +177,7 @@ export function CommentsSidebar({
 
   const filtered = useMemo(() => {
     if (!comments) return [];
-    let rows = comments;
+    let rows = comments.filter((c) => !c.parentId);
     if (filter === "open") rows = rows.filter((c) => !c.resolved);
     if (filter === "resolved") rows = rows.filter((c) => c.resolved);
     if (activeTagIds.length > 0) {
@@ -145,10 +185,15 @@ export function CommentsSidebar({
     }
     if (q.trim()) {
       const s = q.toLowerCase();
-      rows = rows.filter((c) => c.body.toLowerCase().includes(s));
+      rows = rows.filter((c) => {
+        if (c.body.toLowerCase().includes(s)) return true;
+        if (commentAuthorLabel(c, currentUser).toLowerCase().includes(s)) return true;
+        if (c.tags?.some((t) => t.name.toLowerCase().includes(s))) return true;
+        return (c.replies ?? []).some((r) => r.body.toLowerCase().includes(s));
+      });
     }
     return rows;
-  }, [comments, filter, q, activeTagIds]);
+  }, [comments, filter, q, activeTagIds, currentUser]);
 
   useEffect(() => {
     if (!activeThreadId) return;
@@ -159,51 +204,66 @@ export function CommentsSidebar({
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [activeThreadId, filtered]);
 
-  const totalCount = comments?.length ?? 0;
+  const topLevel = comments?.filter((c) => !c.parentId) ?? [];
+  const totalCount = topLevel.length;
+  const openCount = topLevel.filter((c) => !c.resolved).length;
+  const resolvedCount = topLevel.filter((c) => c.resolved).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-sidebar-border px-3 py-2.5">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/90">Comments</h2>
-        {comments !== undefined ? (
-          <Badge variant="secondary" className="h-5 px-1.5 text-xs">
-            {totalCount}
-          </Badge>
-        ) : null}
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("size-7", filterOpen && "bg-accent text-accent-foreground")}
-            onClick={() => setFilterOpen((v) => !v)}
-            aria-label="Toggle filters"
-          >
-            <Filter className="size-3.5" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-7" aria-label="More options">
-                <MoreHorizontal className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem
-                onClick={() => {
-                  const unresolved = comments?.filter((c) => !c.resolved) ?? [];
-                  for (const c of unresolved) void onResolve(c.id, true);
-                }}
-              >
-                Mark all resolved
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {onClose ? (
-            <Button variant="ghost" size="icon" className="size-7 lg:hidden" onClick={onClose}>
-              <X className="size-3.5" />
-            </Button>
+      <div className="space-y-2 border-b border-sidebar-border px-3 py-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/90">Comments</h2>
+          {comments !== undefined ? (
+            <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+              {totalCount}
+            </Badge>
           ) : null}
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("size-7", filterOpen && "bg-accent text-accent-foreground")}
+              onClick={() => setFilterOpen((v) => !v)}
+              aria-label="Toggle filters"
+            >
+              <Filter className="size-3.5" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-7" aria-label="More options">
+                  <MoreHorizontal className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  onClick={() => {
+                    const unresolved = (comments ?? []).filter((c) => !c.parentId && !c.resolved);
+                    for (const c of unresolved) void onResolve(c.id, true);
+                  }}
+                >
+                  Mark all resolved
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {onClose ? (
+              <Button variant="ghost" size="icon" className="size-7 lg:hidden" onClick={onClose}>
+                <X className="size-3.5" />
+              </Button>
+            ) : null}
+          </div>
         </div>
+        {comments !== undefined ? (
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <Badge variant="outline" className="h-5 rounded-full px-2">
+              {openCount} open
+            </Badge>
+            <Badge variant="outline" className="h-5 rounded-full px-2">
+              {resolvedCount} resolved
+            </Badge>
+          </div>
+        ) : null}
       </div>
 
       {/* Filter row */}
@@ -285,6 +345,7 @@ export function CommentsSidebar({
                 <ThreadCard
                   key={c.id}
                   comment={c}
+                  currentUser={currentUser}
                   isActive={activeThreadId === c.id}
                   isOrphaned={isOrphaned}
                   onClick={() => onSelectThread(c.id)}

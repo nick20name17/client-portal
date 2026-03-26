@@ -20,6 +20,7 @@ import { InlineThreadPopover } from "@/components/viewer/InlineThreadPopover";
 import { NewCommentComposePopover } from "@/components/viewer/NewCommentComposePopover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -75,49 +76,10 @@ interface PinPosition {
   orphaned: boolean;
 }
 
-function computePopoverPosition(
-  anchorX: number,
-  anchorY: number,
-  overlayWidth: number,
-  overlayHeight: number,
-  popoverWidth: number,
-  popoverHeight: number,
-): { left: number; top: number } {
-  const ow = overlayWidth || 9999;
-  const oh = overlayHeight || 9999;
-  const PIN_RADIUS = 18;
-  const GAP = 8;
-  const EDGE_PAD = 8;
-
-  const rightSpace = ow - anchorX - EDGE_PAD;
-  const leftSpace = anchorX - EDGE_PAD;
-
-  // Prefer whichever side has enough room; fallback to better side when tight.
-  let left: number;
-  if (rightSpace >= popoverWidth + PIN_RADIUS + GAP) {
-    left = anchorX + PIN_RADIUS + GAP;
-  } else if (leftSpace >= popoverWidth + PIN_RADIUS + GAP) {
-    left = anchorX - PIN_RADIUS - GAP - popoverWidth;
-  } else if (rightSpace >= leftSpace) {
-    left = anchorX + PIN_RADIUS + GAP;
-  } else {
-    left = anchorX - PIN_RADIUS - GAP - popoverWidth;
-  }
-  left = Math.max(EDGE_PAD, Math.min(left, ow - popoverWidth - EDGE_PAD));
-
-  // Vertically: center on the anchor, then clamp to stay inside the overlay
-  let top = anchorY - popoverHeight / 2;
-  top = Math.max(EDGE_PAD, Math.min(top, oh - popoverHeight - EDGE_PAD));
-
-  return { left, top };
-}
-
 export function ProjectViewer({ projectId }: { projectId: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const viewerRootRef = useRef<HTMLDivElement>(null);
-  const ghostPopoverRef = useRef<HTMLDivElement>(null);
-  const activePopoverRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   const { user: authUser } = useAuth();
@@ -148,8 +110,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   } | null>(null);
   // Iframe rect version counter — incremented by ResizeObserver to force re-render when iframe moves
   const [iframeVersion, setIframeVersion] = useState(0);
-  const [ghostPopoverSize, setGhostPopoverSize] = useState({ width: 288, height: 260 });
-  const [activePopoverSize, setActivePopoverSize] = useState({ width: 320, height: 380 });
 
   // Active thread popover
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -165,7 +125,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const pendingMatchRequestIdRef = useRef<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
 
   const [mobileSheet, setMobileSheet] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(true);
@@ -202,19 +161,37 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   const { data: comments, isPending: commentsLoading } = useComments(projectId, fileId ?? undefined);
 
-  const commentAnchors = useMemo(() => {
+  const topLevelComments = useMemo(() => {
     const rows = comments ?? [];
+    const top = rows.filter((c) => !c.parentId);
+    const byParent = new Map<string, Comment[]>();
+    for (const c of rows) {
+      if (!c.parentId) continue;
+      const list = byParent.get(c.parentId) ?? [];
+      list.push(c);
+      byParent.set(c.parentId, list);
+    }
+    return top.map((c) => {
+      const nested = c.replies ?? [];
+      const flat = byParent.get(c.id) ?? [];
+      const merged = [...nested, ...flat.filter((r) => !nested.some((n) => n.id === r.id))];
+      return { ...c, replies: merged };
+    });
+  }, [comments]);
+
+  const commentAnchors = useMemo(() => {
+    const rows = topLevelComments;
     const anchors: Anchor[] = [];
     for (const c of rows) {
       anchors.push(c.anchor as Anchor);
       for (const r of c.replies ?? []) anchors.push(r.anchor as Anchor);
     }
     return anchors.filter((a) => a && (a.selector || a.dataComment));
-  }, [comments]);
+  }, [topLevelComments]);
 
   const anchorResolutionItems = useMemo(
-    () => flattenCommentAnchorsForResolution(comments),
-    [comments],
+    () => flattenCommentAnchorsForResolution(topLevelComments),
+    [topLevelComments],
   );
 
   const handleAnchorResolution = useCallback((resolved: Record<string, boolean>) => {
@@ -224,18 +201,18 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   // Request anchor positions from bridge
   const requestAnchorPositions = useCallback(() => {
     const win = iframeRef.current?.contentWindow;
-    if (!win || !comments?.length || interactionMode !== "commenting" || isFullscreen) return;
-    const topLevelComments = comments.filter((c) => c.anchor && (c.anchor.selector || c.anchor.dataComment));
-    if (!topLevelComments.length) {
+    if (!win || !topLevelComments.length || interactionMode !== "commenting" || isFullscreen) return;
+    const withAnchors = topLevelComments.filter((c) => c.anchor && (c.anchor.selector || c.anchor.dataComment));
+    if (!withAnchors.length) {
       setPinPositions({});
       return;
     }
     win.postMessage({
       type: "GET_ANCHOR_POSITIONS",
       requestId: "pins",
-      comments: topLevelComments.map((c) => ({ id: c.id, anchor: c.anchor })),
+      comments: withAnchors.map((c) => ({ id: c.id, anchor: c.anchor })),
     }, "*");
-  }, [comments, interactionMode, isFullscreen]);
+  }, [topLevelComments, interactionMode, isFullscreen]);
 
   // Listen for ANCHOR_POSITIONS response — store raw iframe coords, convert at render time
   useEffect(() => {
@@ -285,10 +262,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     const el = overlayRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      setOverlaySize({ width: el.clientWidth, height: el.clientHeight });
       requestAnchorPositions();
     });
-    setOverlaySize({ width: el.clientWidth, height: el.clientHeight });
     ro.observe(el);
     return () => ro.disconnect();
   }, [requestAnchorPositions]);
@@ -360,37 +335,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return { x, y, anchor: ghostRaw.anchor };
   }, [ghostRaw, rawToOverlay]);
 
-  useEffect(() => {
-    const el = ghostPopoverRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setGhostPopoverSize({ width: el.offsetWidth || 288, height: el.offsetHeight || 260 });
-    });
-    setGhostPopoverSize({ width: el.offsetWidth || 288, height: el.offsetHeight || 260 });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ghostPin]);
-
-  useEffect(() => {
-    const el = activePopoverRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setActivePopoverSize({ width: el.offsetWidth || 320, height: el.offsetHeight || 380 });
-    });
-    setActivePopoverSize({ width: el.offsetWidth || 320, height: el.offsetHeight || 380 });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [activeThreadId]);
-
   // Compute pin positions — converted fresh each render so sidebar moves are reflected
   const pins: PinPosition[] = useMemo(() => {
-    if (!comments) return [];
+    if (!topLevelComments.length) return [];
 
     const result: PinPosition[] = [];
     let orphanedIndex = 0;
 
-    for (const c of comments) {
-      if (c.parentId) continue;
+    for (const c of topLevelComments) {
       const pos = pinPositions[c.id];
       const hasAnchor = c.anchor && (c.anchor.selector || c.anchor.dataComment);
       if (!hasAnchor) continue;
@@ -405,7 +357,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       result.push({ commentId: c.id, x, y, orphaned: false });
     }
     return result;
-  }, [comments, pinPositions, rawToOverlay]);
+  }, [topLevelComments, pinPositions, rawToOverlay]);
 
   const sendHighlight = useCallback((a: Anchor | null) => {
     const win = iframeRef.current?.contentWindow;
@@ -425,8 +377,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         pendingGhostAnchorRef.current = anchor;
         const requestId = `match-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         pendingMatchRequestIdRef.current = requestId;
-        const topLevelComments = (comments ?? [])
-          .filter((c) => !c.parentId && c.anchor && (c.anchor.selector || c.anchor.dataComment))
+        const topLevelCommentsWithAnchors = topLevelComments
+          .filter((c) => c.anchor && (c.anchor.selector || c.anchor.dataComment))
           .map((c) => ({ id: c.id, anchor: c.anchor }));
         const win = iframeRef.current?.contentWindow;
         win?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
@@ -435,7 +387,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             type: "MATCH_EXISTING_THREAD",
             requestId,
             selectedAnchor: anchor,
-            comments: topLevelComments,
+            comments: topLevelCommentsWithAnchors,
           },
           "*",
         );
@@ -443,7 +395,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [interactionMode, isFullscreen, comments]);
+  }, [interactionMode, isFullscreen, topLevelComments]);
 
   // Handle ghost pin position — store raw iframe coords
   useEffect(() => {
@@ -460,7 +412,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           pendingGhostAnchorRef.current = null;
           setGhostRaw(null);
           setActiveThreadId(existingThreadId);
-          const existing = comments?.find((c) => c.id === existingThreadId);
+          const existing = topLevelComments.find((c) => c.id === existingThreadId);
           if (existing) sendHighlight(existing.anchor as Anchor);
           return;
         }
@@ -496,7 +448,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [comments, sendHighlight]);
+  }, [topLevelComments, sendHighlight]);
 
   // Enter comment mode: set crosshair cursor in iframe
   function enterCommentMode() {
@@ -589,7 +541,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   async function onReply(commentId: string, body: string) {
     if (!fileId) return;
-    const parent = comments?.find((c) => c.id === commentId);
+    const parent = topLevelComments.find((c) => c.id === commentId);
     try {
       await createComment.mutateAsync({
         fileId,
@@ -607,7 +559,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     pendingGhostAnchorRef.current = null;
     setCommentMode(false);
     setActiveThreadId((prev) => (prev === commentId ? null : commentId));
-    const c = comments?.find((x) => x.id === commentId);
+    const c = topLevelComments.find((x) => x.id === commentId);
     if (c) sendHighlight(c.anchor as Anchor);
     if (isMobile) setMobileSheet(true);
     else setCommentsOpen(true);
@@ -644,7 +596,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     interactionMode === "commenting" && !isFullscreen ? "commenting" : "browsing";
 
   const sidebarProps = {
-    comments,
+    comments: topLevelComments,
+    currentUser: user,
     loading: commentsLoading,
     tagOptions,
     onAddComment: enterCommentMode,
@@ -839,27 +792,31 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       {showComposePopover && ghostPin ? (
                         <>
                           <GhostPin x={ghostPin.x} y={ghostPin.y} />
-                          <div
-                            ref={ghostPopoverRef}
-                            className="pointer-events-auto absolute z-40"
-                            style={computePopoverPosition(
-                              ghostPin.x,
-                              ghostPin.y,
-                              overlaySize.width,
-                              overlaySize.height,
-                              ghostPopoverSize.width,
-                              ghostPopoverSize.height,
-                            )}
-                          >
-                            <NewCommentComposePopover
-                              currentUser={user}
-                              tagOptions={tagOptions}
-                              selectedTagIds={selectedTagIds}
-                              onToggleTag={toggleTag}
-                              onSubmit={onSubmitNewComment}
-                              onCancel={cancelCommentMode}
-                            />
-                          </div>
+                          <Popover open={showComposePopover}>
+                            <PopoverAnchor asChild>
+                              <div
+                                className="pointer-events-none absolute z-40"
+                                style={{ left: ghostPin.x, top: ghostPin.y, width: 1, height: 1 }}
+                              />
+                            </PopoverAnchor>
+                            <PopoverContent
+                              side="right"
+                              align="start"
+                              sideOffset={16}
+                              collisionPadding={12}
+                              className="w-auto border-0 bg-transparent p-0 shadow-none"
+                              onOpenAutoFocus={(e) => e.preventDefault()}
+                            >
+                              <NewCommentComposePopover
+                                currentUser={user}
+                                tagOptions={tagOptions}
+                                selectedTagIds={selectedTagIds}
+                                onToggleTag={toggleTag}
+                                onSubmit={onSubmitNewComment}
+                                onCancel={cancelCommentMode}
+                              />
+                            </PopoverContent>
+                          </Popover>
                         </>
                       ) : null}
 
@@ -892,39 +849,42 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       {(() => {
                         if (!showThreadPopover || !activeThreadId) return null;
                         const activePin = pins.find((p) => p.commentId === activeThreadId);
-                        const activeComment = comments?.find((c) => c.id === activeThreadId);
+                        const activeComment = topLevelComments.find((c) => c.id === activeThreadId);
                         if (!activePin || !activeComment) return null;
-                        const flatReplies = (comments ?? []).filter((c) => c.parentId === activeComment.id);
-                        const mergedReplies = [
-                          ...(activeComment.replies ?? []),
-                          ...flatReplies.filter((r) => !(activeComment.replies ?? []).some((x) => x.id === r.id)),
-                        ];
-                        const threadComment = { ...activeComment, replies: mergedReplies };
                         return (
-                          <div
+                          <Popover
                             key={activeThreadId}
-                            ref={activePopoverRef}
-                            className="pointer-events-auto absolute z-50"
-                            style={computePopoverPosition(
-                              activePin.x,
-                              activePin.y,
-                              overlaySize.width,
-                              overlaySize.height,
-                              activePopoverSize.width,
-                              activePopoverSize.height,
-                            )}
+                            open={showThreadPopover}
+                            onOpenChange={(open) => {
+                              if (!open) setActiveThreadId(null);
+                            }}
                           >
-                            <InlineThreadPopover
-                              comment={threadComment}
-                              currentUser={user}
-                              canComment={interactionMode === "commenting"}
-                              onClose={() => setActiveThreadId(null)}
-                              onResolve={onResolve}
-                              onDelete={onDelete}
-                              onReply={onReply}
-                              isOrphaned={activePin.orphaned}
-                            />
-                          </div>
+                            <PopoverAnchor asChild>
+                              <div
+                                className="pointer-events-none absolute z-50"
+                                style={{ left: activePin.x, top: activePin.y, width: 1, height: 1 }}
+                              />
+                            </PopoverAnchor>
+                            <PopoverContent
+                              side="right"
+                              align="start"
+                              sideOffset={16}
+                              collisionPadding={12}
+                              className="w-auto border-0 bg-transparent p-0 shadow-none"
+                              onOpenAutoFocus={(e) => e.preventDefault()}
+                            >
+                              <InlineThreadPopover
+                                comment={activeComment}
+                                currentUser={user}
+                                canComment={interactionMode === "commenting"}
+                                onClose={() => setActiveThreadId(null)}
+                                onResolve={onResolve}
+                                onDelete={onDelete}
+                                onReply={onReply}
+                                isOrphaned={activePin.orphaned}
+                              />
+                            </PopoverContent>
+                          </Popover>
                         );
                       })()}
                     </div>
