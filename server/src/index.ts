@@ -1,6 +1,6 @@
 import { pool } from "@/db";
 import { auth, cors, openapi } from "@/lib";
-import { comments, companies, projects, sse, tags, users } from "@/modules";
+import { comments, companies, projects, sse, stats, tags, users } from "@/modules";
 import { env } from "@/utils/env";
 import { Elysia, t } from "elysia";
 
@@ -36,6 +36,7 @@ const app = new Elysia({ prefix: "/api" })
   .use(projects)
   .use(comments)
   .use(tags)
+  .use(stats)
   .use(sse)
   .listen(env.PORT ?? 3000);
 

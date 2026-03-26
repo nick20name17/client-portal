@@ -1,9 +1,12 @@
 import { db } from "@/db";
+import { user as userTable } from "@/db/schema/auth";
+import { comments } from "@/db/schema/comments";
+import { companies } from "@/db/schema/companies";
 import { projectFiles, projectMembers, projects } from "@/db/schema/projects";
 import { canViewProject, getProjectMemberRole, getProjectOrNull } from "@/lib/access";
 import { buildGithubRawUrl, fetchGithubTreeRecursive, parseGithubRepoUrl } from "@/lib/github";
 import type { SessionUser } from "@/types";
-import { and, eq, notInArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { status } from "elysia";
 import type { ProjectModel } from "./model";
 
@@ -31,18 +34,85 @@ function forbidden(): never {
   throw status(403, { error: "Forbidden" } satisfies ProjectModel["forbidden"]);
 }
 
+async function enrichProjectRows(
+  rows: { project: typeof projects.$inferSelect; company: typeof companies.$inferSelect }[],
+): Promise<ProjectModel["listResponse"]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.project.id);
+
+  const [commentAgg, fileAgg, memberAgg] = await Promise.all([
+    db
+      .select({ projectId: comments.projectId, n: count() })
+      .from(comments)
+      .where(and(inArray(comments.projectId, ids), isNull(comments.deletedAt)))
+      .groupBy(comments.projectId),
+    db
+      .select({ projectId: projectFiles.projectId, n: count() })
+      .from(projectFiles)
+      .where(inArray(projectFiles.projectId, ids))
+      .groupBy(projectFiles.projectId),
+    db
+      .select({ projectId: projectMembers.projectId, n: count() })
+      .from(projectMembers)
+      .where(inArray(projectMembers.projectId, ids))
+      .groupBy(projectMembers.projectId),
+  ]);
+
+  const memberRows = await db
+    .select({
+      projectId: projectMembers.projectId,
+      userId: userTable.id,
+      name: userTable.name,
+      image: userTable.image,
+    })
+    .from(projectMembers)
+    .innerJoin(userTable, eq(projectMembers.userId, userTable.id))
+    .where(inArray(projectMembers.projectId, ids))
+    .orderBy(asc(projectMembers.projectId), asc(projectMembers.addedAt));
+
+  const commentMap = Object.fromEntries(commentAgg.map((c) => [c.projectId, Number(c.n)]));
+  const fileMap = Object.fromEntries(fileAgg.map((c) => [c.projectId, Number(c.n)]));
+  const memberMap = Object.fromEntries(memberAgg.map((c) => [c.projectId, Number(c.n)]));
+
+  const previewByProject = new Map<string, { id: string; name: string; image: string | null }[]>();
+  for (const m of memberRows) {
+    const list = previewByProject.get(m.projectId) ?? [];
+    if (list.length < 5) {
+      list.push({ id: m.userId, name: m.name, image: m.image });
+      previewByProject.set(m.projectId, list);
+    }
+  }
+
+  return rows.map(({ project, company }) => ({
+    ...project,
+    company: { id: company.id, name: company.name },
+    _count: {
+      comments: commentMap[project.id] ?? 0,
+      files: fileMap[project.id] ?? 0,
+      members: memberMap[project.id] ?? 0,
+    },
+    memberPreview: previewByProject.get(project.id) ?? [],
+  }));
+}
+
 export const ProjectService = {
-  async listForUser(user: SessionUser) {
+  async listForUser(user: SessionUser): Promise<ProjectModel["listResponse"]> {
     if (user.role === "admin") {
-      return db.select().from(projects).orderBy(projects.createdAt);
+      const rows = await db
+        .select({ project: projects, company: companies })
+        .from(projects)
+        .innerJoin(companies, eq(projects.companyId, companies.id))
+        .orderBy(projects.createdAt);
+      return enrichProjectRows(rows);
     }
     const rows = await db
-      .select({ project: projects })
+      .select({ project: projects, company: companies })
       .from(projects)
+      .innerJoin(companies, eq(projects.companyId, companies.id))
       .innerJoin(projectMembers, eq(projects.id, projectMembers.projectId))
       .where(eq(projectMembers.userId, user.id))
       .orderBy(projects.createdAt);
-    return rows.map((r) => r.project);
+    return enrichProjectRows(rows);
   },
 
   async create(user: SessionUser, body: ProjectModel["create"]) {
@@ -66,17 +136,25 @@ export const ProjectService = {
       role: "manager",
       addedById: user.id,
     });
-    return row;
+    const [comp] = await db.select().from(companies).where(eq(companies.id, row.companyId)).limit(1);
+    return {
+      ...row,
+      company: comp ? { id: comp.id, name: comp.name } : null,
+    };
   },
 
-  async getById(user: SessionUser, id: string) {
+  async getById(user: SessionUser, id: string): Promise<ProjectModel["select"]> {
     if (!(await canViewProject(user, id))) forbidden();
     const p = await getProjectOrNull(id);
     if (!p)
       throw status(404, {
         error: "Not found",
       } satisfies ProjectModel["notFound"]);
-    return p;
+    const [c] = await db.select().from(companies).where(eq(companies.id, p.companyId)).limit(1);
+    return {
+      ...p,
+      company: c ? { id: c.id, name: c.name } : null,
+    };
   },
 
   async update(user: SessionUser, id: string, body: ProjectModel["update"]) {
@@ -95,7 +173,11 @@ export const ProjectService = {
       throw status(404, {
         error: "Not found",
       } satisfies ProjectModel["notFound"]);
-    return row;
+    const [comp] = await db.select().from(companies).where(eq(companies.id, row.companyId)).limit(1);
+    return {
+      ...row,
+      company: comp ? { id: comp.id, name: comp.name } : null,
+    };
   },
 
   async delete(user: SessionUser, id: string) {
@@ -108,9 +190,34 @@ export const ProjectService = {
     return { ok: true as const };
   },
 
-  async listMembers(user: SessionUser, projectId: string) {
+  async listMembers(user: SessionUser, projectId: string): Promise<ProjectModel["memberList"]> {
     if (!(await canViewProject(user, projectId))) forbidden();
-    return db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
+    const rows = await db
+      .select({
+        member: projectMembers,
+        userId: userTable.id,
+        userName: userTable.name,
+        userEmail: userTable.email,
+        userEmailVerified: userTable.emailVerified,
+        userImage: userTable.image,
+        userRole: userTable.role,
+      })
+      .from(projectMembers)
+      .innerJoin(userTable, eq(projectMembers.userId, userTable.id))
+      .where(eq(projectMembers.projectId, projectId))
+      .orderBy(projectMembers.addedAt);
+
+    return rows.map((r) => ({
+      ...r.member,
+      user: {
+        id: r.userId,
+        name: r.userName,
+        email: r.userEmail,
+        emailVerified: r.userEmailVerified,
+        image: r.userImage,
+        role: r.userRole,
+      },
+    }));
   },
 
   async addMember(user: SessionUser, projectId: string, body: ProjectModel["addMember"]) {

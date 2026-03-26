@@ -7,6 +7,66 @@ const projectSelect = createSelectSchema(projects);
 const projectFileSelect = createSelectSchema(projectFiles);
 const projectMemberSelect = createSelectSchema(projectMembers);
 
+const companyMini = t.Object({
+  id: t.String({ format: "uuid" }),
+  name: t.String(),
+});
+
+const memberPreviewUser = t.Object({
+  id: t.String(),
+  name: t.String(),
+  image: t.Union([t.String(), t.Null()]),
+});
+
+const countShape = t.Object({
+  comments: t.Number(),
+  files: t.Number(),
+  members: t.Number(),
+});
+
+const projectListItem = t.Object({
+  id: t.String({ format: "uuid" }),
+  name: t.String(),
+  description: t.Union([t.String(), t.Null()]),
+  repoUrl: t.String(),
+  companyId: t.String({ format: "uuid" }),
+  createdById: t.Union([t.String(), t.Null()]),
+  createdAt: t.Date(),
+  updatedAt: t.Date(),
+  company: companyMini,
+  _count: countShape,
+  memberPreview: t.Array(memberPreviewUser),
+});
+
+const projectDetail = t.Object({
+  id: t.String({ format: "uuid" }),
+  name: t.String(),
+  description: t.Union([t.String(), t.Null()]),
+  repoUrl: t.String(),
+  companyId: t.String({ format: "uuid" }),
+  createdById: t.Union([t.String(), t.Null()]),
+  createdAt: t.Date(),
+  updatedAt: t.Date(),
+  company: t.Union([companyMini, t.Null()]),
+});
+
+const memberWithUser = t.Object({
+  id: t.String({ format: "uuid" }),
+  projectId: t.String({ format: "uuid" }),
+  userId: t.String(),
+  role: t.Union([t.Literal("manager"), t.Literal("client")]),
+  addedById: t.Union([t.String(), t.Null()]),
+  addedAt: t.Date(),
+  user: t.Object({
+    id: t.String(),
+    name: t.String(),
+    email: t.String(),
+    emailVerified: t.Boolean(),
+    image: t.Union([t.String(), t.Null()]),
+    role: t.String(),
+  }),
+});
+
 export const ProjectModelSchema = {
   idParams: t.Object({ id: t.String({ format: "uuid" }) }),
   fileParams: t.Object({
@@ -32,9 +92,9 @@ export const ProjectModelSchema = {
     userId: t.String(),
     role: t.Union([t.Literal("manager"), t.Literal("client")]),
   }),
-  select: projectSelect,
-  listResponse: t.Array(projectSelect),
-  memberList: t.Array(projectMemberSelect),
+  select: projectDetail,
+  listResponse: t.Array(projectListItem),
+  memberList: t.Array(memberWithUser),
   memberSingle: projectMemberSelect,
   fileList: t.Array(projectFileSelect),
   syncResponse: t.Object({
@@ -54,3 +114,6 @@ export const ProjectModelSchema = {
 } as const;
 
 export type ProjectModel = InferSchema<typeof ProjectModelSchema>;
+
+/** Raw project row schema (internal / legacy) */
+export { projectSelect };

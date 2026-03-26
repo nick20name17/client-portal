@@ -1,4 +1,5 @@
 import type { InferSchema } from "@/utils/typebox";
+import { Type } from "@sinclair/typebox";
 import { t } from "elysia";
 
 const commentRow = t.Object({
@@ -16,6 +17,43 @@ const commentRow = t.Object({
   createdAt: t.Date(),
   updatedAt: t.Date(),
 });
+
+const userPublic = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  email: Type.String(),
+  role: Type.String(),
+  image: Type.Union([Type.String(), Type.Null()]),
+});
+
+const tagChip = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  name: Type.String(),
+  color: Type.String(),
+});
+
+/** Nested comment thread for list API (TypeScript shape; OpenAPI uses listResponse) */
+export const CommentRichSchema = Type.Recursive((This) =>
+  Type.Object({
+    id: Type.String({ format: "uuid" }),
+    projectId: Type.String({ format: "uuid" }),
+    fileId: Type.String({ format: "uuid" }),
+    authorId: Type.String(),
+    parentId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    body: Type.String(),
+    resolved: Type.Boolean(),
+    resolvedById: Type.Union([Type.String(), Type.Null()]),
+    resolvedAt: Type.Union([Type.Date(), Type.Null()]),
+    anchor: Type.Any(),
+    deletedAt: Type.Union([Type.Date(), Type.Null()]),
+    createdAt: Type.Date(),
+    updatedAt: Type.Date(),
+    author: userPublic,
+    resolvedBy: Type.Union([userPublic, Type.Null()]),
+    tags: Type.Array(tagChip),
+    replies: Type.Array(This),
+  }),
+);
 
 export const CommentModelSchema = {
   projectParams: t.Object({ id: t.String({ format: "uuid" }) }),
@@ -40,7 +78,8 @@ export const CommentModelSchema = {
   }),
   tagBody: t.Object({ tagId: t.String({ format: "uuid" }) }),
   select: commentRow,
-  listResponse: t.Array(commentRow),
+  /** Enriched threads; loose schema for Elysia/OpenAPI (recursive tree) */
+  listResponse: t.Array(t.Any()),
   forbidden: t.Object({ error: t.Literal("Forbidden") }),
   notFound: t.Object({ error: t.Literal("Not found") }),
   invalidFile: t.Object({ error: t.Literal("Invalid fileId") }),

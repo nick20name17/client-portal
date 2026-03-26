@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { user as userTable } from "@/db/schema/auth";
 import { commentTags, comments } from "@/db/schema/comments";
 import { projectFiles } from "@/db/schema/projects";
 import { tags } from "@/db/schema/tags";
@@ -7,9 +8,13 @@ import { rateLimit } from "@/lib/rate-limit";
 import { sendEmailNotification } from "@/lib/send-email-notification";
 import { sseEmit, sseEvents } from "@/plugins/sse";
 import type { SessionUser } from "@/types";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { status } from "elysia";
-import type { CommentModel } from "./model";
+import { CommentRichSchema, type CommentModel } from "./model";
+import type { Static } from "@sinclair/typebox";
+
+type CommentRich = Static<typeof CommentRichSchema>;
 
 async function assertCommentProject(user: SessionUser, projectId: string): Promise<void> {
   if (!(await canViewProject(user, projectId))) {
@@ -29,8 +34,8 @@ async function canDeleteComment(user: SessionUser, authorId: string): Promise<bo
 }
 
 export const CommentService = {
-  async list(user: SessionUser, projectId: string, query: CommentModel["listQuery"]) {
-    await assertCommentProject(user, projectId);
+  async list(sessionUser: SessionUser, projectId: string, query: CommentModel["listQuery"]): Promise<CommentRich[]> {
+    await assertCommentProject(sessionUser, projectId);
     const conditions = [eq(comments.projectId, projectId), isNull(comments.deletedAt)];
     if (query.fileId) {
       conditions.push(eq(comments.fileId, query.fileId));
@@ -40,11 +45,106 @@ export const CommentService = {
     } else if (query.resolved === "false") {
       conditions.push(eq(comments.resolved, false));
     }
-    return db
-      .select()
+
+    const author = alias(userTable, "comment_author");
+    const resolver = alias(userTable, "comment_resolver");
+
+    const rows = await db
+      .select({
+        comment: comments,
+        authorId: author.id,
+        authorName: author.name,
+        authorEmail: author.email,
+        authorRole: author.role,
+        authorImage: author.image,
+        resolverId: resolver.id,
+        resolverName: resolver.name,
+        resolverEmail: resolver.email,
+        resolverRole: resolver.role,
+        resolverImage: resolver.image,
+      })
       .from(comments)
+      .innerJoin(author, eq(comments.authorId, author.id))
+      .leftJoin(resolver, eq(comments.resolvedById, resolver.id))
       .where(and(...conditions))
       .orderBy(desc(comments.createdAt));
+
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.comment.id);
+    const tagRows = await db
+      .select({
+        commentId: commentTags.commentId,
+        tag: tags,
+      })
+      .from(commentTags)
+      .innerJoin(tags, eq(commentTags.tagId, tags.id))
+      .where(inArray(commentTags.commentId, ids));
+
+    const tagsByComment = new Map<string, { id: string; name: string; color: string }[]>();
+    for (const tr of tagRows) {
+      const list = tagsByComment.get(tr.commentId) ?? [];
+      list.push({ id: tr.tag.id, name: tr.tag.name, color: tr.tag.color });
+      tagsByComment.set(tr.commentId, list);
+    }
+
+    const map = new Map<string, CommentRich>();
+    for (const row of rows) {
+      const c = row.comment;
+      map.set(c.id, {
+        id: c.id,
+        projectId: c.projectId,
+        fileId: c.fileId,
+        authorId: c.authorId,
+        parentId: c.parentId,
+        body: c.body,
+        resolved: c.resolved,
+        resolvedById: c.resolvedById,
+        resolvedAt: c.resolvedAt,
+        anchor: c.anchor,
+        deletedAt: c.deletedAt,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        author: {
+          id: row.authorId,
+          name: row.authorName,
+          email: row.authorEmail,
+          role: row.authorRole,
+          image: row.authorImage,
+        },
+        resolvedBy: row.resolverId
+          ? {
+              id: row.resolverId,
+              name: row.resolverName!,
+              email: row.resolverEmail!,
+              role: row.resolverRole!,
+              image: row.resolverImage,
+            }
+          : null,
+        tags: tagsByComment.get(c.id) ?? [],
+        replies: [],
+      });
+    }
+
+    const roots: CommentRich[] = [];
+    for (const row of rows) {
+      const c = row.comment;
+      const node = map.get(c.id)!;
+      if (c.parentId) {
+        const parent = map.get(c.parentId);
+        if (parent) parent.replies.push(node);
+        else roots.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    roots.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    for (const n of map.values()) {
+      n.replies.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    }
+
+    return roots;
   },
 
   async create(
