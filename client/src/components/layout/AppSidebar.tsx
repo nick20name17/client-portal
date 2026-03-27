@@ -40,7 +40,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border px-2 py-3">
         <Link href="/" className="flex items-center gap-2 rounded-md px-2 py-1.5 font-semibold text-sidebar-foreground">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-sm">
+          <span className="flex size-8 items-center justify-center rounded-none bg-sidebar-primary text-sidebar-primary-foreground text-sm font-bold tracking-tight">
             HR
           </span>
           <span className="group-data-[collapsible=icon]:hidden">HTML Review</span>
@@ -48,7 +48,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNav.map((item) => (
@@ -66,7 +66,7 @@ export function AppSidebar() {
         </SidebarGroup>
         {role === "admin" ? (
           <SidebarGroup>
-            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">Admin</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {adminNav.map((item) => (

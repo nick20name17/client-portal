@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { Anchor, Comment, Tag, User } from "@/types";
 
@@ -70,7 +69,6 @@ interface ThreadCardProps {
 
 function ThreadCard({ comment, currentUser, isActive, isOrphaned, onClick, onHover }: ThreadCardProps) {
   const authorName = commentAuthorLabel(comment, currentUser);
-  const authorImage = comment.author?.image ?? null;
   const replyCount = comment.replies?.length ?? 0;
 
   return (
@@ -78,60 +76,44 @@ function ThreadCard({ comment, currentUser, isActive, isOrphaned, onClick, onHov
       type="button"
       data-comment-root-id={comment.id}
       className={cn(
-        "group w-full rounded-2xl border bg-card/75 text-left shadow-sm transition-all duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        isActive
-          ? "border-primary/40 bg-accent/40 ring-1 ring-primary/20"
-          : "border-border hover:border-border/80",
-        comment.resolved && "bg-muted/45",
+        "group w-full rounded-lg border border-border bg-background text-left shadow-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-muted/30",
+        isActive && "ring-1 ring-primary/30 border-primary/30",
+        comment.resolved && "opacity-50",
       )}
-      style={{
-        borderLeftWidth: 4,
-        borderLeftColor: isOrphaned
-          ? "var(--muted-foreground)"
-          : comment.resolved
-          ? "oklch(0.527 0.154 150.069)"
-          : "var(--primary)",
-      }}
       onClick={onClick}
       onMouseEnter={() => onHover(comment.anchor as Anchor)}
       onMouseLeave={() => onHover(null)}
     >
-      <div className="px-3.5 py-3">
-        <div className="mb-2 flex items-center gap-2">
-          <UserAvatar name={authorName} image={authorImage} className="size-9 shrink-0" />
+      <div className="p-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="min-w-0 truncate text-base font-semibold leading-tight">{authorName}</span>
-              <span className="shrink-0 text-sm text-muted-foreground">
+              <span className="min-w-0 truncate text-sm font-semibold leading-tight">{authorName}</span>
+              {comment.resolved ? (
+                <CheckCircle2 className="size-3.5 shrink-0 text-muted-foreground" />
+              ) : null}
+              {isOrphaned ? (
+                <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="font-mono text-[10px] text-muted-foreground">#{comment.id.slice(0, 6)}</span>
+              <span className="text-[10px] text-muted-foreground">
                 {formatRelativeShort(new Date(comment.createdAt))}
               </span>
             </div>
-            <p className="truncate text-xs text-muted-foreground/90">Thread #{comment.id.slice(0, 3)}</p>
           </div>
-          {comment.resolved ? (
-            <CheckCircle2 className="size-4 shrink-0 text-[oklch(0.527_0.154_150.069)]" />
-          ) : null}
-          {isOrphaned ? (
-            <AlertTriangle className="size-4 shrink-0 text-amber-500" />
-          ) : null}
         </div>
         <p className="line-clamp-2 text-sm text-foreground/90">{comment.body}</p>
-        {isOrphaned ? (
-          <p className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-            ⚠ Element not found
-          </p>
-        ) : null}
         <div className="mt-2.5 flex items-center gap-1.5">
           {comment.tags?.map((t) => (
             <TagBadge key={t.id} tag={t} className="text-[10px]" />
           ))}
           {replyCount > 0 ? (
-            <span className="ml-auto text-sm font-medium text-primary">
-              {replyCount} {replyCount === 1 ? "reply" : "replies"}
+            <span className="ml-auto text-xs text-muted-foreground">
+              ↩ {replyCount} {replyCount === 1 ? "reply" : "replies"}
             </span>
-          ) : (
-            <span className="ml-auto text-xs text-muted-foreground">No replies</span>
-          )}
+          ) : null}
         </div>
       </div>
     </button>
@@ -212,13 +194,11 @@ export function CommentsSidebar({
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
       {/* Header */}
-      <div className="space-y-2 border-b border-sidebar-border px-3 py-3">
+      <div className="border-b border-sidebar-border px-4 py-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/90">Comments</h2>
+          <h2 className="text-sm font-semibold text-sidebar-foreground">Comments</h2>
           {comments !== undefined ? (
-            <Badge variant="secondary" className="h-5 px-1.5 text-xs">
-              {totalCount}
-            </Badge>
+            <span className="text-xs text-muted-foreground">({totalCount})</span>
           ) : null}
           <div className="ml-auto flex items-center gap-1">
             <Button
@@ -255,33 +235,41 @@ export function CommentsSidebar({
           </div>
         </div>
         {comments !== undefined ? (
-          <div className="flex items-center gap-1.5 text-[11px]">
-            <Badge variant="outline" className="h-5 rounded-full px-2">
+          <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => setFilter("open")}
+              className={cn("transition-colors duration-150 hover:text-foreground", filter === "open" && "text-foreground font-medium")}
+            >
               {openCount} open
-            </Badge>
-            <Badge variant="outline" className="h-5 rounded-full px-2">
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setFilter("resolved")}
+              className={cn("transition-colors duration-150 hover:text-foreground", filter === "resolved" && "text-foreground font-medium")}
+            >
               {resolvedCount} resolved
-            </Badge>
+            </button>
+            {filter !== "all" ? (
+              <>
+                <span>·</span>
+                <button
+                  type="button"
+                  onClick={() => setFilter("all")}
+                  className="transition-colors duration-150 hover:text-foreground"
+                >
+                  All
+                </button>
+              </>
+            ) : null}
           </div>
         ) : null}
       </div>
 
       {/* Filter row */}
       {filterOpen ? (
-        <div className="space-y-2 border-b border-sidebar-border p-2.5">
-          <Tabs value={filter} onValueChange={(v) => setFilter(v as "all" | "open" | "resolved")}>
-            <TabsList className="h-7 w-full gap-0.5 rounded-md bg-muted/60 p-0.5">
-              <TabsTrigger className="flex-1 rounded-sm py-0.5 text-xs font-medium" value="all">
-                All
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 rounded-sm py-0.5 text-xs font-medium" value="open">
-                Open
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 rounded-sm py-0.5 text-xs font-medium" value="resolved">
-                Resolved
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="space-y-2 border-b border-sidebar-border p-4">
           {tagOptions.length > 0 ? (
             <div className="flex gap-1.5 overflow-x-auto pb-0.5">
               {tagOptions.map((t) => (
@@ -305,12 +293,12 @@ export function CommentsSidebar({
       ) : null}
 
       {/* Search */}
-      <div className="border-b border-sidebar-border px-2.5 py-2">
+      <div className="border-b border-sidebar-border px-4 py-2">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-0 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
-            className="h-7 border-sidebar-border bg-background/80 pl-8 text-xs placeholder:text-muted-foreground/80"
-            placeholder="Search comments…"
+            className="h-8 w-full rounded-none border-0 border-b border-border bg-transparent pl-5 text-xs shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/60"
+            placeholder="Search..."
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -318,7 +306,7 @@ export function CommentsSidebar({
       </div>
 
       {/* Thread list */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="space-y-3">
             <Skeleton className="h-20 rounded-lg" />

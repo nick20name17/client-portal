@@ -620,35 +620,36 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         style={{ "--sidebar-width": "22.5rem" } as CSSProperties}
       >
         <SidebarInset className="h-dvh overflow-hidden bg-background">
-          {/* Top header — unchanged */}
-          <header className="relative flex h-14 shrink-0 items-center border-b border-border bg-background px-3 md:px-4">
-            <div className="flex min-w-0 max-w-[min(100%,14rem)] items-center gap-2 sm:max-w-[min(100%,20rem)] md:max-w-[40%]">
-              <Button variant="ghost" size="icon" className="size-9 shrink-0" asChild>
+          {/* Top bar */}
+          <header className="relative flex h-10 shrink-0 items-center border-b border-border bg-background px-3 md:px-4">
+            <div className="flex min-w-0 max-w-[min(100%,14rem)] items-center gap-1 sm:max-w-[min(100%,20rem)] md:max-w-[40%]">
+              <Button variant="ghost" size="icon" className="size-7 shrink-0" asChild>
                 <Link href="/" aria-label="Back">
-                  <ArrowLeft className="size-4" />
+                  <ArrowLeft className="size-3.5" />
                 </Link>
               </Button>
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h1 className="truncate text-sm font-semibold tracking-tight">{project?.name ?? "Project"}</h1>
-                  {project?.company?.name ? (
-                    <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">
-                      {project.company.name}
-                    </Badge>
-                  ) : null}
-                </div>
+              <div className="min-w-0 flex-1 flex items-center gap-1.5 text-sm">
+                <span className="truncate text-muted-foreground font-medium">{project?.name ?? "Project"}</span>
+                {files?.find((f) => f.id === fileId) ? (
+                  <>
+                    <span className="text-muted-foreground/50">/</span>
+                    <span className="truncate font-medium text-foreground">
+                      {files.find((f) => f.id === fileId)!.path.split("/").pop() ?? ""}
+                    </span>
+                  </>
+                ) : null}
               </div>
             </div>
             {files && files.length > 1 ? (
               <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 hidden max-w-[min(100vw-12rem,28rem)] -translate-x-1/2 -translate-y-1/2 md:block">
                 <div className="pointer-events-auto overflow-x-auto">
                   <Tabs value={fileId ?? ""} onValueChange={setFileId}>
-                    <TabsList className="h-9 gap-0.5 rounded-lg bg-muted/80 p-1">
+                    <TabsList className="h-7 gap-0.5 rounded-md bg-muted/80 p-0.5">
                       {files.map((f) => (
                         <TabsTrigger
                           key={f.id}
                           value={f.id}
-                          className="max-w-[160px] shrink truncate rounded-md px-3 text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                          className="max-w-40 shrink truncate rounded-sm px-2.5 text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm"
                         >
                           {f.path.split("/").pop() ?? f.path}
                         </TabsTrigger>
@@ -662,21 +663,20 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               <Tabs
                 value={interactionMode}
                 onValueChange={(v) => void setInteractionMode(v as "browsing" | "commenting")}
-                className=""
               >
-                <TabsList className="h-9 rounded-lg bg-muted/70 p-1">
-                  <TabsTrigger value="browsing" className="px-3 text-xs">
-                    Browsing
+                <TabsList className="h-7 rounded-full bg-muted/70 p-0.5">
+                  <TabsTrigger value="browsing" className="rounded-full px-3 text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    Browse
                   </TabsTrigger>
-                  <TabsTrigger value="commenting" className="px-3 text-xs">
-                    Commenting
+                  <TabsTrigger value="commenting" className="rounded-full px-3 text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    Comment
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" className="size-9" onClick={() => void onSync()}>
-                    <RefreshCw className="size-4" />
+                  <Button variant="ghost" size="icon" className="size-7" onClick={() => void onSync()}>
+                    <RefreshCw className="size-3.5" />
                     <span className="sr-only">Sync files from repository</span>
                   </Button>
                 </TooltipTrigger>
@@ -684,8 +684,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" className="size-9" onClick={copyShare}>
-                    <Share2 className="size-4" />
+                  <Button variant="ghost" size="icon" className="size-7" onClick={copyShare}>
+                    <Share2 className="size-3.5" />
                     <span className="sr-only">Copy link</span>
                   </Button>
                 </TooltipTrigger>
@@ -693,8 +693,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" className="size-9" onClick={() => void toggleFullscreen()}>
-                    {isFullscreen ? <Minimize className="size-4" /> : <Expand className="size-4" />}
+                  <Button variant="ghost" size="icon" className="size-7" onClick={() => void toggleFullscreen()}>
+                    {isFullscreen ? <Minimize className="size-3.5" /> : <Expand className="size-3.5" />}
                     <span className="sr-only">Toggle fullscreen</span>
                   </Button>
                 </TooltipTrigger>
@@ -821,7 +821,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       ) : null}
 
                       {/* Comment pins */}
-                      {pins.map((pin) => {
+                      {pins.map((pin, pinIndex) => {
                         const comment = comments?.find((c) => c.id === pin.commentId);
                         if (!comment) return null;
                         const replyCount = comment.replies?.length ?? 0;
@@ -835,6 +835,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                             isActive={activeThreadId === pin.commentId}
                             isOrphaned={pin.orphaned}
                             replyCount={replyCount}
+                            index={pinIndex}
                             onClick={() => {
                               setGhostRaw(null); // dismiss compose if open
                               pendingGhostAnchorRef.current = null;

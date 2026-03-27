@@ -10,41 +10,27 @@ interface CommentPinProps {
   isActive: boolean;
   isOrphaned?: boolean;
   replyCount?: number;
+  index?: number;
   onClick: () => void;
 }
 
-export function CommentPin({ comment, x, y, isActive, isOrphaned, replyCount, onClick }: CommentPinProps) {
-  const authorName =
-    comment.author?.name?.trim() ||
-    comment.author?.email?.split("@")[0] ||
-    `user-${comment.authorId.slice(0, 6)}`;
-  const authorImage = comment.author?.image ?? null;
-  const initials = authorName
-    .split(/\s+/)
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+export function CommentPin({ comment, x, y, isActive, isOrphaned, replyCount, index = 0, onClick }: CommentPinProps) {
+  const size = isActive ? 28 : 24;
+  const label = isOrphaned ? "!" : String(index + 1);
 
-  function hueFromString(s: string): number {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h + s.charCodeAt(i) * (i + 1)) % 360;
-    return h;
-  }
-  const hue = hueFromString(authorName);
-
-  const size = isActive ? 32 : 28;
-  const borderColor = isOrphaned
+  const bgColor = isOrphaned
     ? "var(--muted-foreground)"
     : comment.resolved
     ? "oklch(0.527 0.154 150.069)"
     : "var(--primary)";
 
+  const preview = comment.body.slice(0, 60);
+
   return (
     <button
       type="button"
-      aria-label={isOrphaned ? "Orphaned comment" : `Comment by ${authorName}`}
-      title={isOrphaned ? "⚠ Element not found" : comment.body.slice(0, 40)}
+      aria-label={isOrphaned ? "Orphaned comment" : `Comment ${index + 1}`}
+      title={preview}
       onClick={onClick}
       className={cn(
         "group pointer-events-auto absolute flex items-center justify-center rounded-full transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -56,56 +42,30 @@ export function CommentPin({ comment, x, y, isActive, isOrphaned, replyCount, on
         top: y - size / 2,
         width: size,
         height: size,
-        border: `2px solid ${borderColor}`,
+        background: bgColor,
         boxShadow: isActive
-          ? `0 0 0 3px ${borderColor}40, 0 4px 12px rgba(0,0,0,0.25)`
-          : "0 2px 8px rgba(0,0,0,0.18)",
-        overflow: "visible",
-        background: "transparent",
+          ? `0 0 0 3px ${bgColor}40, 0 4px 12px rgba(0,0,0,0.25)`
+          : "0 2px 6px rgba(0,0,0,0.20)",
         padding: 0,
         cursor: "pointer",
       }}
     >
-      {isOrphaned ? (
-        <span
-          className="flex items-center justify-center rounded-full text-xs"
-          style={{
-            width: size - 4,
-            height: size - 4,
-            background: "var(--muted)",
-            color: "var(--muted-foreground)",
-            fontSize: 12,
-          }}
-        >
-          ⚠️
-        </span>
-      ) : authorImage ? (
-        <img
-          src={authorImage}
-          alt={authorName}
-          className="rounded-full object-cover"
-          style={{ width: size - 4, height: size - 4 }}
-        />
-      ) : (
-        <span
-          className="flex items-center justify-center rounded-full text-white"
-          style={{
-            width: size - 4,
-            height: size - 4,
-            background: `oklch(0.55 0.12 ${hue})`,
-            fontSize: size <= 28 ? 10 : 11,
-            fontWeight: 600,
-            lineHeight: 1,
-          }}
-        >
-          {initials || "?"}
-        </span>
-      )}
+      <span
+        className="flex items-center justify-center text-white"
+        style={{
+          fontSize: size <= 24 ? 10 : 11,
+          fontWeight: 700,
+          lineHeight: 1,
+          userSelect: "none",
+        }}
+      >
+        {label}
+      </span>
 
       {replyCount && replyCount > 0 ? (
         <span
-          className="absolute -right-1.5 -top-1.5 flex min-w-[16px] items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground"
-          style={{ height: 16, padding: "0 3px", lineHeight: 1 }}
+          className="absolute -right-1.5 -top-1.5 flex min-w-3.5 items-center justify-center rounded-full bg-background border border-border text-[8px] font-bold text-foreground"
+          style={{ height: 14, padding: "0 2px", lineHeight: 1 }}
         >
           {replyCount > 9 ? "9+" : replyCount}
         </span>
@@ -124,10 +84,10 @@ export function GhostPin({ x, y }: GhostPinProps) {
     <div
       className="pointer-events-none absolute z-30 flex items-center justify-center rounded-full"
       style={{
-        left: x - 14,
-        top: y - 14,
-        width: 28,
-        height: 28,
+        left: x - 12,
+        top: y - 12,
+        width: 24,
+        height: 24,
         border: "2px dashed var(--primary)",
         opacity: 0.6,
         background: "var(--primary-foreground)",

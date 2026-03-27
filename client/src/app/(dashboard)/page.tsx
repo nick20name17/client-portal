@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FolderOpen, Plus } from "lucide-react";
+import { FolderOpen, Plus, MessageCircle, CheckCircle2, TrendingUp, FolderKanban, Users2 } from "lucide-react";
 
 import { ProjectCard } from "@/components/dashboard/ProjectCard";
-import { StatsWidget } from "@/components/dashboard/StatsWidget";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -20,74 +19,107 @@ export default function DashboardPage() {
   const { data: projects, isPending } = useProjects();
   const { data: stats, isPending: statsLoading } = useStats({ enabled: isAdmin });
 
+  const resolvedPct =
+    stats && stats.totalComments > 0
+      ? Math.round((stats.resolvedComments / stats.totalComments) * 100)
+      : 0;
+
   return (
-    <div className="flex flex-1 flex-col gap-8 p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Good morning 👋</h1>
-          <p className="text-sm text-muted-foreground">Your projects and review activity.</p>
+          <h1 className="text-lg font-semibold tracking-tight">
+            {isAdmin ? "All projects" : "My projects"}
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {projects ? `${projects.length} project${projects.length === 1 ? "" : "s"}` : "Loading…"}
+          </p>
         </div>
         {isAdmin ? (
-          <Button asChild>
+          <Button asChild variant="outline" size="sm">
             <Link href="/projects">
-              <Plus className="size-4" />
+              <Plus className="size-3.5" />
               New project
             </Link>
           </Button>
         ) : null}
       </div>
 
-      <div
-        className={
-          isAdmin
-            ? "grid gap-8 lg:grid-cols-[1fr_minmax(260px,320px)]"
-            : "grid gap-8"
-        }
-      >
-        <section className="min-w-0 space-y-4">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {isAdmin ? "All projects" : "My projects"}
-          </h2>
-          {isPending ? (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <Skeleton className="h-52 rounded-xl" />
-              <Skeleton className="h-52 rounded-xl" />
-              <Skeleton className="h-52 rounded-xl" />
-            </div>
-          ) : !projects?.length ? (
-            <EmptyState
-              icon={FolderOpen}
-              title="No projects yet"
-              description={
-                isAdmin
-                  ? "Create your first project and sync HTML from GitHub."
-                  : "You have not been added to any project yet."
-              }
-            >
-              {isAdmin ? (
-                <Button asChild>
-                  <Link href="/projects">
-                    <Plus className="size-4" />
-                    Create your first project
-                  </Link>
-                </Button>
-              ) : null}
-            </EmptyState>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {projects.map((p) => (
-                <ProjectCard key={p.id} project={p} />
+      {/* Admin stats bar */}
+      {isAdmin ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {statsLoading || !stats ? (
+            <>
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
               ))}
-            </div>
+            </>
+          ) : (
+            <>
+              {[
+                { icon: MessageCircle, label: "Total", value: stats.totalComments },
+                { icon: TrendingUp, label: "Open", value: stats.openComments },
+                { icon: CheckCircle2, label: "Resolved", value: `${resolvedPct}%` },
+                { icon: FolderKanban, label: "Projects", value: stats.projects },
+                { icon: Users2, label: "Users", value: stats.users },
+              ].map(({ icon: Icon, label, value }) => (
+                <div key={label} className="rounded-lg border border-border bg-background px-4 py-3">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Icon className="size-3.5" />
+                    {label}
+                  </div>
+                  <p className="mt-1 text-xl font-semibold tracking-tight">{value}</p>
+                </div>
+              ))}
+            </>
           )}
-        </section>
+        </div>
+      ) : null}
 
-        {isAdmin ? (
-          <aside className="lg:sticky lg:top-20 lg:self-start">
-            <StatsWidget stats={stats} loading={statsLoading} />
-          </aside>
-        ) : null}
-      </div>
+      {/* Project list */}
+      {isPending ? (
+        <div className="overflow-hidden rounded-lg border border-border">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center gap-5 border-b border-border px-5 py-4 last:border-0">
+              <Skeleton className="size-2 rounded-full" />
+              <Skeleton className="h-4 w-48 rounded" />
+              <div className="ml-auto flex items-center gap-4">
+                <Skeleton className="h-3.5 w-16 rounded" />
+                <Skeleton className="h-3.5 w-20 rounded" />
+                <Skeleton className="size-3.5 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : !projects?.length ? (
+        <EmptyState
+          icon={FolderOpen}
+          title="No projects yet"
+          description={
+            isAdmin
+              ? "Create your first project and sync HTML from GitHub."
+              : "You have not been added to any project yet."
+          }
+        >
+          {isAdmin ? (
+            <Button asChild>
+              <Link href="/projects">
+                <Plus className="size-4" />
+                Create your first project
+              </Link>
+            </Button>
+          ) : null}
+        </EmptyState>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border">
+          {projects.map((p) => (
+            <div key={p.id} className="border-b border-border last:border-0">
+              <ProjectCard project={p} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
