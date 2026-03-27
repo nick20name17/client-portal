@@ -39,3 +39,10 @@ const raw = {
 const withDefaults = Value.Default(EnvSchema, raw);
 const converted = Value.Convert(EnvSchema, withDefaults);
 export const env: Env = Value.Parse(EnvSchema, converted);
+
+/** Frontend + API origins for CORS and Better Auth (e.g. Scalar/OpenAPI use the API host as Origin). */
+export const trustedOrigins = [
+  ...new Set(
+    [env.TRUSTED_ORIGIN, env.BETTER_AUTH_URL].map((u) => new URL(u).origin),
+  ),
+];
