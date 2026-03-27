@@ -1,6 +1,7 @@
 import { pool } from "@/db";
 import { auth, cors, openapi } from "@/lib";
-import { comments, companies, projects, sse, stats, tags, users } from "@/modules";
+import { comments, companies, projects, sse, tags, users } from "@/modules";
+import { stats } from "@/modules/stats/index";
 import { env } from "@/utils/env";
 import { Elysia, t } from "elysia";
 
@@ -41,3 +42,9 @@ const app = new Elysia({ prefix: "/api" })
   .listen(env.PORT ?? 3000);
 
 console.log(`API running at ${app.server?.hostname}:${app.server?.port}`);
+console.log(
+  "Registered stats routes:",
+  app.routes
+    .map((r) => `${r.method} ${r.path}`)
+    .filter((p) => p.includes("stats")),
+);

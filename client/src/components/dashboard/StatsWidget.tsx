@@ -1,24 +1,22 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { CheckCircle2, FolderKanban, MessageCircle, TrendingUp, Users2 } from "lucide-react";
+import { CheckCircle2, FolderKanban, Loader2, MessageCircle, TrendingUp, Users2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { DashboardStats } from "@/types";
 
 export function StatsWidget({ stats, loading }: { stats?: DashboardStats; loading?: boolean }) {
   if (loading || !stats) {
     return (
-      <Card className="shadow-(--shadow-card)">
+      <Card className="border-dashed shadow-(--shadow-card)">
         <CardHeader>
-          <Skeleton className="h-5 w-32" />
+          <CardTitle className="text-base">Overview</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
+        <CardContent className="flex min-h-[140px] flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-5 animate-spin text-primary" aria-hidden />
+          <span>Loading overview…</span>
         </CardContent>
       </Card>
     );

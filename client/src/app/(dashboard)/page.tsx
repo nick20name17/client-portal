@@ -14,20 +14,17 @@ import { useStats } from "@/hooks/use-stats";
 
 export default function DashboardPage() {
   const { data: session } = authClient.useSession();
-  const user = session?.user as { name?: string | null; role?: string } | undefined;
-  const role = user?.role;
+  const role = (session?.user as { role?: string } | undefined)?.role;
   const isAdmin = role === "admin";
 
   const { data: projects, isPending } = useProjects();
   const { data: stats, isPending: statsLoading } = useStats({ enabled: isAdmin });
 
-  const greeting = user?.name?.split(/\s+/)[0] ?? "there";
-
   return (
     <div className="flex flex-1 flex-col gap-8 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Good morning, {greeting} 👋</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Good morning 👋</h1>
           <p className="text-sm text-muted-foreground">Your projects and review activity.</p>
         </div>
         {isAdmin ? (
