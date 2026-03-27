@@ -10,6 +10,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@better-auth/core": "1.5.6",
     "@better-auth/drizzle-adapter": "latest",
     "@elysiajs/cors": "latest",
     "@elysiajs/openapi": "latest",
