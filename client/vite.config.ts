@@ -18,7 +18,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3001,
+    port: parseInt(process.env.PORT ?? "3001"),
+    host: true,
     proxy: {
       "/api": {
         target: "http://127.0.0.1:3000",
@@ -26,5 +27,9 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+  preview: {
+    port: parseInt(process.env.PORT ?? "4173"),
+    host: true,
   },
 });

@@ -10,8 +10,11 @@ export function useProjectWS(projectId: string | undefined) {
   useEffect(() => {
     if (!projectId) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/api/ws/projects/${projectId}`;
+    const serverUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
+    const wsBase = serverUrl
+      ? serverUrl.replace(/^http/, "ws")
+      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
+    const url = `${wsBase}/api/ws/projects/${projectId}`;
     const rws = new ReconnectingWebSocket(url);
 
     rws.onmessage = () => {

@@ -20,8 +20,10 @@ function toApiError(error: AxiosError): ApiError {
   return new ApiError(msg || "Request failed", error.response?.status ?? 0, data);
 }
 
+const serverUrl = import.meta.env.VITE_SERVER_URL ?? "";
+
 export const apiClient = axios.create({
-  baseURL: "/api",
+  baseURL: serverUrl ? `${serverUrl}/api` : "/api",
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });

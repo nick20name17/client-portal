@@ -219,15 +219,16 @@ export function InlineThreadPopover({
   async function handleSubmit() {
     const t = replyText.trim();
     if (!t) return;
+    const pendingReplyingTo = replyingTo;
     setSubmitting(true);
+    setReplyText("");
+    setReplyingTo(null);
     try {
-      if (replyingTo) {
-        await onReply(replyingTo.threadRootId, t);
+      if (pendingReplyingTo) {
+        await onReply(pendingReplyingTo.threadRootId, t);
       } else {
         await onNewComment(comment.id, t);
       }
-      setReplyText("");
-      setReplyingTo(null);
     } finally {
       setSubmitting(false);
     }
