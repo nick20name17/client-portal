@@ -1,0 +1,23 @@
+{
+  "name": "client-platform",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n client,server -c cyan,magenta \"bun --cwd client dev\" \"bun --cwd server dev\"",
+    "dev:client": "bun --cwd client dev",
+    "dev:server": "bun --cwd server dev",
+    "build": "bun --cwd client build",
+    "lint": "bun --cwd client lint",
+    "lint:fix": "bun --cwd client lint -- --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "bun run format:check && bun run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "prettier": "^3.5.3"
+  }
+}

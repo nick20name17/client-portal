@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Environment (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Build & framework output
+dist/
+build/
+.next/
+out/
+
+# Logs & debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Test
+coverage/
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.idea/
+*.swp
+*.swo
+
+# Certificates / secrets
+*.pem
+
+# Bun (local cache / artifacts; commit bun.lock)
+.bun/
+*.bun
+
+# Accidental npm lockfile when using Bun
+package-lock.json
+
+# Archives & traces
+*.zip
+*.tar.gz
+*.tgz
+*.trace

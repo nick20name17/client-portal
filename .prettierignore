@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+dist
+build
+coverage
+.vercel
+*.min.js
+bun.lock
+**/bun.lock
+.git
+server/drizzle/meta
