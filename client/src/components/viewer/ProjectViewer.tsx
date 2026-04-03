@@ -1066,29 +1066,27 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   )}
                 </div>
 
-                {/* Row 2: file tabs */}
-                {files && files.length > 1 ? (
-                  <div className="flex items-center gap-1 overflow-x-auto border-t border-border/40 px-3 py-2 scrollbar-none">
-                    {files.map((f) => {
-                      const active = String(f.id) === fileId;
-                      return (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => void setFileId(String(f.id))}
-                          className={cn(
-                            "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
-                            active
-                              ? "bg-foreground/8 text-foreground"
-                              : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                          )}
-                        >
-                          {f.path.split("/").pop() ?? f.path}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                {/* Row 2: file tabs — always shown */}
+                <div className="flex items-center gap-1 overflow-x-auto border-t border-border/40 px-3 py-2 scrollbar-none">
+                  {(files ?? []).map((f) => {
+                    const active = String(f.id) === fileId;
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => void setFileId(String(f.id))}
+                        className={cn(
+                          "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
+                          active
+                            ? "bg-foreground/8 text-foreground"
+                            : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                        )}
+                      >
+                        {f.path.split("/").pop() ?? f.path}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ) : null}
 

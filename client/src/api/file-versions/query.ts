@@ -13,6 +13,7 @@ export const fileVersionsQuery = (projectId: string, fileId: string) =>
     queryKey: FILE_VERSION_KEYS.all(projectId, fileId),
     queryFn: () => fileVersionsService.getAll(projectId, fileId),
     enabled: !!projectId && !!fileId,
+    refetchInterval: 30 * 60 * 1000,
   });
 
 export function useFileVersions(projectId: string | undefined, fileId: string | undefined) {

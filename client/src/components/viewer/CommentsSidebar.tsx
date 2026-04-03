@@ -1,7 +1,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Link2Off, MessageSquarePlus, MoreHorizontal, Pencil, Search, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Link2Off, MessageSquarePlus, MoreHorizontal, Pencil, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
 
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import {
@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatRelativeShort } from "@/lib/utils";
@@ -263,7 +264,7 @@ export function CommentsSidebar({
   comments,
   currentUser,
   loading,
-  tagOptions: _tagOptions,
+  tagOptions,
   onAddComment: _onAddComment,
   onSubmitDirectComment,
   addCommentDisabled,
@@ -300,7 +301,17 @@ export function CommentsSidebar({
 }) {
   const [filter, setFilter] = useState<"all" | "open" | "resolved">("open");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
   const listRef = useRef<HTMLDivElement | null>(null);
+
+  function toggleTag(id: number) {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const versionShaById = useMemo(() => {
     const map: Record<number, string> = {};
@@ -330,15 +341,21 @@ export function CommentsSidebar({
   const resolvedCount = topLevel.length - openCount;
 
   const filteredBySearch = useMemo(() => {
-    if (!searchQuery.trim()) return filtered;
-    const q = searchQuery.toLowerCase();
-    return filtered.filter(
-      (c) =>
-        c.body.toLowerCase().includes(q) ||
-        (c.author?.name ?? "").toLowerCase().includes(q) ||
-        (c.replies ?? []).some((r) => r.body.toLowerCase().includes(q)),
-    );
-  }, [filtered, searchQuery]);
+    let rows = filtered;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      rows = rows.filter(
+        (c) =>
+          c.body.toLowerCase().includes(q) ||
+          (c.author?.name ?? "").toLowerCase().includes(q) ||
+          (c.replies ?? []).some((r) => r.body.toLowerCase().includes(q)),
+      );
+    }
+    if (selectedTagIds.size > 0) {
+      rows = rows.filter((c) => (c.tags ?? []).some((t) => selectedTagIds.has(t.id)));
+    }
+    return rows;
+  }, [filtered, searchQuery, selectedTagIds]);
 
   const filters = [
     { key: "all" as const, label: `All (${topLevel.length})` },
@@ -438,8 +455,8 @@ export function CommentsSidebar({
         ) : null}
       </div>
 
-      {/* ── Segmented filter ── */}
-      <div className="bg-bg-secondary px-3 pt-2.5 pb-1">
+      {/* ── Segmented filter + tag filter ── */}
+      <div className="bg-bg-secondary px-3 pt-2.5 pb-2.5 space-y-2" style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="flex rounded-lg bg-muted/80 p-0.5">
           {filters.map((f) => (
             <button
@@ -457,6 +474,73 @@ export function CommentsSidebar({
             </button>
           ))}
         </div>
+
+      {tagOptions.length > 0 ? (
+        <div className="space-y-1.5">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-6 items-center gap-1 rounded border border-border bg-background px-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <TagIcon className="size-3 shrink-0" />
+                Tags
+                {selectedTagIds.size > 0 ? (
+                  <span className="text-[11px] font-medium text-foreground">({selectedTagIds.size})</span>
+                ) : (
+                  <ChevronDown className="size-3 opacity-40" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-40 p-1">
+              {tagOptions.map((tag) => {
+                const selected = selectedTagIds.has(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => toggleTag(tag.id)}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-[12px] text-foreground hover:bg-muted/70 transition-colors"
+                  >
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="flex-1 text-left">{tag.name}</span>
+                    {selected ? <Check className="size-3 text-foreground/60" /> : null}
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
+          {/* Selected tag chips */}
+          {selectedTagIds.size > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {tagOptions.filter((t) => selectedTagIds.has(t.id)).map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
+                  style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
+                >
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                  {tag.name}
+                  <button
+                    type="button"
+                    onClick={() => toggleTag(tag.id)}
+                    className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <X className="size-2.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       </div>
 
       {/* ── Thread list ── */}
