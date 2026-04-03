@@ -129,6 +129,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   // Active thread popover
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
+  // Keeps last known pin/comment so Radix can animate out before unmounting
+  const lastPopoverStateRef = useRef<{
+    threadId: number;
+    pin: PinPosition;
+    comment: Comment;
+    relatedComments: Comment[];
+  } | null>(null);
 
   // Track whether the initial ?comment= URL param has been consumed (thread opened from it).
   // Declared here so the sync effect below can reference it.
@@ -1257,22 +1264,28 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
                       {/* Active thread popover — rendered once, sibling to pins so position is relative to overlay */}
                       {(() => {
-                        if (!showThreadPopover || !activeThreadId) return null;
-                        const activePin = pins.find((p) => p.commentId === activeThreadId);
-                        const activeComment = topLevelComments.find((c) => c.id === activeThreadId);
-                        if (!activePin || !activeComment) return null;
-                        const activeAnchor = activeComment.anchor as Anchor | undefined;
-                        const relatedComments = topLevelComments.filter((c) => {
-                          if (c.id === activeComment.id) return false;
-                          const ca = c.anchor as Anchor | undefined;
-                          if (!ca || !activeAnchor) return false;
-                          if (activeAnchor.dataComment && ca.dataComment) return activeAnchor.dataComment === ca.dataComment;
-                          if (activeAnchor.selector && ca.selector) return activeAnchor.selector === ca.selector;
-                          return false;
-                        });
+                        // Update ref while thread is active so we have data during close animation
+                        if (activeThreadId) {
+                          const activePin = pins.find((p) => p.commentId === activeThreadId);
+                          const activeComment = topLevelComments.find((c) => c.id === activeThreadId);
+                          if (activePin && activeComment) {
+                            const activeAnchor = activeComment.anchor as Anchor | undefined;
+                            const relatedComments = topLevelComments.filter((c) => {
+                              if (c.id === activeComment.id) return false;
+                              const ca = c.anchor as Anchor | undefined;
+                              if (!ca || !activeAnchor) return false;
+                              if (activeAnchor.dataComment && ca.dataComment) return activeAnchor.dataComment === ca.dataComment;
+                              if (activeAnchor.selector && ca.selector) return activeAnchor.selector === ca.selector;
+                              return false;
+                            });
+                            lastPopoverStateRef.current = { threadId: activeComment.id, pin: activePin, comment: activeComment, relatedComments };
+                          }
+                        }
+                        const display = lastPopoverStateRef.current;
+                        if (!display) return null;
                         return (
                           <Popover
-                            key={activeThreadId}
+                            key={display.threadId}
                             open={showThreadPopover}
                             onOpenChange={(open) => {
                               if (!open) setActiveThreadId(null);
@@ -1281,7 +1294,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                             <PopoverAnchor asChild>
                               <div
                                 className="pointer-events-none absolute z-50"
-                                style={{ left: activePin.x, top: activePin.y, width: 1, height: 1 }}
+                                style={{ left: display.pin.x, top: display.pin.y, width: 1, height: 1 }}
                               />
                             </PopoverAnchor>
                             <PopoverContent
@@ -1293,8 +1306,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                               onOpenAutoFocus={(e) => e.preventDefault()}
                             >
                               <InlineThreadPopover
-                                comment={activeComment}
-                                relatedComments={relatedComments}
+                                comment={display.comment}
+                                relatedComments={display.relatedComments}
                                 currentUser={user}
                                 canComment={true}
                                 members={mentionMembers}
@@ -1305,7 +1318,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                                 onNewComment={onNewCommentFromThread}
                                 onEditMessage={onEditComment}
                                 onUnlink={canManageVersions ? onUnlink : undefined}
-                                isOrphaned={activePin.orphaned}
+                                isOrphaned={display.pin.orphaned}
                               />
                             </PopoverContent>
                           </Popover>
