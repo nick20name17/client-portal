@@ -533,6 +533,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     let orphanedIndex = 0;
 
     for (const c of topLevelComments) {
+      if (c.resolved) continue;
       const pos = pinPositions[String(c.id)];
       const hasAnchor = c.anchor && (c.anchor.selector || c.anchor.dataComment);
       if (!hasAnchor) continue;
@@ -654,7 +655,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       for (const tagId of tagsToAdd) {
         await addTag.mutateAsync({ commentId: row.id, tagId });
       }
-      setActiveThreadId(row.id);
+      setActiveThreadId((prev) => (prev === tempId ? row.id : prev));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to post");
       setActiveThreadId(null);
@@ -898,7 +899,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         _tags: optimisticTags,
       });
       for (const tagId of tagsToAdd) await addTag.mutateAsync({ commentId: row.id, tagId });
-      setActiveThreadId(row.id);
+      setActiveThreadId((prev) => (prev === tempId ? row.id : prev));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to post");
       setActiveThreadId(null);

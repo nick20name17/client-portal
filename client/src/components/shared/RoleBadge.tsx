@@ -1,12 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types";
 
-const dotColors: Record<Role, string> = {
-  admin: "bg-role-admin",
-  manager: "bg-role-manager",
-  client: "bg-role-sale",
-};
-
 const textColors: Record<Role, string> = {
   admin: "text-role-admin",
   manager: "text-role-manager",
@@ -22,7 +16,6 @@ export function RoleBadge({ role, className }: { role: Role; className?: string 
         className,
       )}
     >
-      <span className={cn("size-2 rounded-full", dotColors[role] ?? "bg-muted-foreground")} />
       {role}
     </span>
   );

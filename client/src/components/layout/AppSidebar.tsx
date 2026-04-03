@@ -81,7 +81,7 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data } = authClient.useSession();
   const user = data?.user as
-    | { name?: string | null; email?: string | null; image?: string | null; role?: string }
+    | { id?: string; name?: string | null; email?: string | null; image?: string | null; role?: string }
     | undefined;
   const role = user?.role;
 
@@ -146,6 +146,7 @@ export function AppSidebar() {
                 <UserAvatar
                   name={user?.name ?? user?.email ?? "?"}
                   image={user?.image}
+                  userId={user?.id}
                   className="size-6 shrink-0"
                 />
                 <div className="min-w-0 flex-1 text-left">
@@ -164,6 +165,7 @@ export function AppSidebar() {
                   <UserAvatar
                     name={user?.name ?? user?.email ?? "?"}
                     image={user?.image}
+                    userId={user?.id}
                     className="size-7 shrink-0"
                   />
                   <div className="min-w-0 flex-1">

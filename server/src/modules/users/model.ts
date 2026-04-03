@@ -16,7 +16,7 @@ export const UserModelSchema = {
     email: t.String({ format: "email" }),
     role: t.String(),
     companyId: t.Optional(t.Union([t.Number(), t.Null()])),
-    tmpPassword: t.String({ minLength: 12, pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).+" }),
+    tmpPassword: t.String({ minLength: 8, pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).+" }),
   }),
   update: t.Object({
     role: t.Optional(t.String()),

@@ -15,13 +15,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useAddProjectMember,
@@ -42,7 +35,9 @@ export function ProjectMembersSheet({
   onOpenChange: (o: boolean) => void;
 }) {
   const { data: session } = authClient.useSession();
-  const appRole = (session?.user as { role?: string } | undefined)?.role;
+  const sessionUser = session?.user as { id?: string; role?: string } | undefined;
+  const appRole = sessionUser?.role;
+  const currentUserId = sessionUser?.id;
 
   const { data: members, isPending } = useProjectMembers(projectId ?? undefined);
   const { data: allUsers } = useUsers(undefined, { enabled: appRole === "admin" });
@@ -50,7 +45,6 @@ export function ProjectMembersSheet({
   const remove = useRemoveProjectMember();
 
   const [search, setSearch] = useState("");
-  const [pendingRole, setPendingRole] = useState<Record<string, "manager" | "client">>({});
 
   const memberIds = new Set(members?.map((m) => m.userId) ?? []);
 
@@ -64,24 +58,11 @@ export function ProjectMembersSheet({
     );
   }, [allUsers, memberIds, search]);
 
-  function getRoleFor(uid: string): "manager" | "client" {
-    return pendingRole[uid] ?? "client";
-  }
-
-  function setRoleFor(uid: string, r: "manager" | "client") {
-    setPendingRole((prev) => ({ ...prev, [uid]: r }));
-  }
-
-  async function addMember(userId: string) {
+  async function addMember(userId: string, role: "manager" | "client") {
     if (!projectId) return;
     try {
-      await add.mutateAsync({ projectId, userId, role: getRoleFor(userId) });
+      await add.mutateAsync({ projectId, userId, role });
       toast.success("Member added");
-      setPendingRole((prev) => {
-        const next = { ...prev };
-        delete next[userId];
-        return next;
-      });
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Failed to add");
     }
@@ -132,16 +113,20 @@ export function ProjectMembersSheet({
                     <UserAvatar name={m.user.name} image={m.user.image} className="size-8 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-medium text-foreground">{m.user.name}</p>
-                      <RoleBadge role={m.role as Role} className="mt-0.5" />
+                      <RoleBadge role={m.user.role as Role} className="mt-0.5" />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void removeMember(m.userId)}
-                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-text-tertiary opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                      aria-label="Remove member"
-                    >
-                      <UserMinus className="size-3.5" />
-                    </button>
+                    {m.userId !== currentUserId ? (
+                      <button
+                        type="button"
+                        onClick={() => void removeMember(m.userId)}
+                        className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-text-tertiary opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                        aria-label="Remove member"
+                      >
+                        <UserMinus className="size-3.5" />
+                      </button>
+                    ) : (
+                      <div className="size-7 shrink-0" />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -191,24 +176,13 @@ export function ProjectMembersSheet({
                             {u.email}
                           </p>
                         </div>
-                        <Select
-                          value={getRoleFor(u.id)}
-                          onValueChange={(v) => setRoleFor(u.id, v as "manager" | "client")}
-                        >
-                          <SelectTrigger className="h-7 w-[90px] text-[12px] shrink-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="client">Client</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <RoleBadge role={u.role as Role} className="shrink-0" />
                         <Button
                           size="icon-sm"
                           variant="outline"
                           className="size-7 shrink-0"
                           disabled={add.isPending}
-                          onClick={() => void addMember(u.id)}
+                          onClick={() => void addMember(u.id, u.role as "manager" | "client")}
                           aria-label={`Add ${u.name}`}
                         >
                           <UserPlus className="size-3.5" />

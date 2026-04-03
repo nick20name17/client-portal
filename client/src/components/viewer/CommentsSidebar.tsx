@@ -1,18 +1,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Check, ChevronDown, Link2Off, MessageSquarePlus, MoreHorizontal, Pencil, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Link2Off, MessageSquarePlus, Pencil, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
 
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn, formatRelativeShort } from "@/lib/utils";
 import type { Anchor, Comment, FileVersion, Tag, User } from "@/types";
 
@@ -230,15 +224,6 @@ function CommentThread({
                         Delete
                       </button>
                     ) : null}
-                    {!comment.resolved ? (
-                      <button
-                        type="button"
-                        className="rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-                        onClick={(e) => { e.stopPropagation(); void onResolve(comment.id, true); }}
-                      >
-                        Resolve
-                      </button>
-                    ) : null}
                     {isOrphaned && onUnlink ? (
                       <button
                         type="button"
@@ -415,33 +400,6 @@ export function CommentsSidebar({
           ) : null}
         </div>
 
-        {/* More options */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="More options"
-                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
-                >
-                  <MoreHorizontal className="size-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem
-                  onClick={() => {
-                    const unresolved = (comments ?? []).filter((c) => !c.parentId && !c.resolved);
-                    for (const c of unresolved) void onResolve(c.id, true);
-                  }}
-                >
-                  Mark all resolved
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">More options</TooltipContent>
-        </Tooltip>
 
         {onClose ? (
           <button
