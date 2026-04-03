@@ -6,6 +6,7 @@ import { ResolvedBadge } from "@/components/comments/ResolvedBadge";
 import { TagBadge } from "@/components/comments/TagBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
+import { renderMentionBody } from "@/lib/mention-utils";
 import { cn } from "@/lib/utils";
 import type { Anchor, Comment } from "@/types";
 
@@ -86,7 +87,7 @@ export function CommentItem({
           Element not found in current version
         </p>
       ) : null}
-      <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{comment.body}</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{renderMentionBody(comment.body)}</p>
       <div className="mt-2 flex flex-wrap gap-1">
         {comment.tags?.map((t) => (
           <TagBadge key={t.id} tag={t} />

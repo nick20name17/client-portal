@@ -5,7 +5,7 @@ import { fileVersions, projectFiles } from "@/db/schema/projects";
 import { tags } from "@/db/schema/tags";
 import { canViewProject, getProjectMemberRole } from "@/lib/access";
 import { rateLimit } from "@/lib/rate-limit";
-import { sendEmailNotification } from "@/lib/send-email-notification";
+import { parseMentions, sendEmailNotification } from "@/lib/send-email-notification";
 import { wsEmit, wsEvents } from "@/plugins/ws";
 import type { SessionUser } from "@/types";
 import { and, desc, eq, inArray, isNull, isNotNull, lte } from "drizzle-orm";
@@ -223,6 +223,13 @@ export const CommentService = {
       commentId: row.id,
       actorId: user.id,
     }).catch((err) => console.error("Email failed:", err));
+    if (parseMentions(body.body).length > 0) {
+      sendEmailNotification({
+        type: "comment.mention",
+        commentId: row.id,
+        actorId: user.id,
+      }).catch((err) => console.error("Email failed:", err));
+    }
     wsEmit(projectId, wsEvents.commentCreated, {
       commentId: row.id,
       projectId,
@@ -277,6 +284,13 @@ export const CommentService = {
         projectId: c.projectId,
       });
     } else {
+      if (body.body !== undefined && parseMentions(body.body).length > 0) {
+        sendEmailNotification({
+          type: "comment.mention",
+          commentId: c.id,
+          actorId: user.id,
+        }).catch((err) => console.error("Email failed:", err));
+      }
       wsEmit(c.projectId, wsEvents.commentUpdated, {
         commentId: c.id,
         projectId: c.projectId,

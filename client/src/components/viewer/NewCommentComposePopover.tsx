@@ -2,11 +2,11 @@
 import { useState } from "react";
 import { ArrowRight, Tag } from "lucide-react";
 
+import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Textarea } from "@/components/ui/textarea";
 import type { Tag as TagType, User } from "@/types";
 
 interface NewCommentComposePopoverProps {
@@ -16,6 +16,7 @@ interface NewCommentComposePopoverProps {
   onToggleTag: (id: number) => void;
   onSubmit: (body: string) => void | Promise<void>;
   onCancel: () => void;
+  members?: MentionMember[];
 }
 
 export function NewCommentComposePopover({
@@ -25,6 +26,7 @@ export function NewCommentComposePopover({
   onToggleTag,
   onSubmit,
   onCancel,
+  members,
 }: NewCommentComposePopoverProps) {
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -55,13 +57,14 @@ export function NewCommentComposePopover({
       </div>
 
       {/* Textarea */}
-      <Textarea
+      <MentionTextarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onValueChange={setText}
+        members={members}
         rows={3}
         placeholder="Write feedback…"
         disabled={submitting}
-        className="resize-none text-[13px]"
+        className="text-[13px]"
         autoFocus
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {

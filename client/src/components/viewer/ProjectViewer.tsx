@@ -44,7 +44,7 @@ import {
   useComments,
 } from "@/api/comments/query";
 import { useFileVersions, useCheckNewVersions, FILE_VERSION_KEYS } from "@/api/file-versions/query";
-import { useProjectFiles, useProject } from "@/api/projects/query";
+import { useProjectFiles, useProject, useProjectMembers } from "@/api/projects/query";
 import { useProjectWS } from "@/api/ws/use-project-ws";
 import { useTags } from "@/api/tags/query";
 import { apiText } from "@/lib/api";
@@ -92,6 +92,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const user = authUser as import("@/types").User | null;
   const { data: project } = useProject(projectId);
   const { data: files, isPending: filesLoading } = useProjectFiles(projectId);
+  const { data: projectMembersData } = useProjectMembers(project?.id);
+  const mentionMembers = (projectMembersData ?? []).map((m) => ({
+    id: m.userId,
+    name: m.user.name,
+    image: m.user.image,
+  }));
   const { data: tagList } = useTags();
   const tagOptions = tagList ?? [];
   const createComment = useCreateComment(projectId, user);
@@ -917,6 +923,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const sidebarProps = {
     comments: topLevelComments,
     currentUser: user,
+    members: mentionMembers,
     loading: commentsLoading,
     tagOptions,
     onAddComment: () => {},
@@ -1190,6 +1197,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                                 onToggleTag={toggleTag}
                                 onSubmit={onSubmitNewComment}
                                 onCancel={() => setGhostRaw(null)}
+                                members={mentionMembers}
                               />
                             </PopoverContent>
                           </Popover>
@@ -1264,6 +1272,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                                 relatedComments={relatedComments}
                                 currentUser={user}
                                 canComment={true}
+                                members={mentionMembers}
                                 onClose={() => setActiveThreadId(null)}
                                 onResolve={onResolve}
                                 onDelete={onDelete}

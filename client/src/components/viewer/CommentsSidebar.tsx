@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Check, ChevronDown, Link2Off, MessageSquarePlus, Pencil, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
 
+import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { renderMentionBody } from "@/lib/mention-utils";
 import { cn, formatRelativeShort } from "@/lib/utils";
 import type { Anchor, Comment, FileVersion, Tag, User } from "@/types";
 
@@ -25,18 +27,6 @@ function commentAuthorLabel(comment: Comment, currentUser?: User | null): string
   return `user-${comment.authorId.slice(0, 6)}`;
 }
 
-/** Renders @mention tokens in blue */
-function parseBody(body: string) {
-  return body.split(/(@\w+)/g).map((part, i) =>
-    part.startsWith("@") ? (
-      <span key={i} className="text-primary">
-        {part}
-      </span>
-    ) : (
-      part
-    ),
-  );
-}
 
 function isEdited(comment: Comment): boolean {
   return comment.updatedAt !== comment.createdAt;
@@ -46,6 +36,7 @@ interface CommentThreadProps {
   comment: Comment;
   index: number;
   currentUser?: User | null;
+  members?: MentionMember[];
   isActive: boolean;
   isOrphaned: boolean;
   isUnlinked?: boolean;
@@ -63,6 +54,7 @@ function CommentThread({
   comment,
   index,
   currentUser,
+  members,
   isActive,
   isOrphaned,
   isUnlinked,
@@ -152,12 +144,13 @@ function CommentThread({
           {/* Body — edit mode or display */}
           {editing ? (
             <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-              <textarea
+              <MentionTextarea
                 autoFocus
                 value={editText}
-                onChange={(e) => setEditText(e.target.value)}
+                onValueChange={setEditText}
+                members={members}
                 rows={3}
-                className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[13px] leading-relaxed text-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                className="px-2 py-1.5 text-[13px] leading-relaxed focus-visible:border-primary/50 focus-visible:ring-1 focus-visible:ring-primary/30"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void handleSaveEdit(); }
                   if (e.key === "Escape") { setEditing(false); setEditText(comment.body); }
@@ -183,7 +176,7 @@ function CommentThread({
             </div>
           ) : (
             <p className={cn("mt-0.5 text-[13px] leading-relaxed text-foreground/80", comment.resolved && "line-through")}>
-              {parseBody(comment.body)}
+              {renderMentionBody(comment.body)}
             </p>
           )}
 
@@ -248,6 +241,7 @@ function CommentThread({
 export function CommentsSidebar({
   comments,
   currentUser,
+  members,
   loading,
   tagOptions,
   onAddComment: _onAddComment,
@@ -267,6 +261,7 @@ export function CommentsSidebar({
 }: {
   comments: Comment[] | undefined;
   currentUser?: User | null;
+  members?: MentionMember[];
   loading: boolean;
   tagOptions: Tag[];
   onAddComment: () => void;
@@ -357,6 +352,7 @@ export function CommentsSidebar({
           comment={c}
           index={idx}
           currentUser={currentUser}
+          members={members}
           isActive={activeThreadId === c.id}
           isOrphaned={opts.isOrphaned}
           isUnlinked={opts.isUnlinked}

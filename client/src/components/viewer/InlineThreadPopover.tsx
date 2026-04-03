@@ -2,11 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, CheckCircle, CornerDownRight, Link2Off, MessageSquare, Pencil, Reply, RotateCcw, Trash2, X } from "lucide-react";
 
+import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { TagBadge } from "@/components/comments/TagBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+import { renderMentionBody } from "@/lib/mention-utils";
 import { cn, formatRelativeShort } from "@/lib/utils";
 import type { Comment, Tag, User } from "@/types";
 
@@ -15,6 +17,7 @@ interface InlineThreadPopoverProps {
   relatedComments?: Comment[];
   currentUser: User | null;
   canComment?: boolean;
+  members?: MentionMember[];
   onClose: () => void;
   onResolve: (id: number, resolved: boolean) => void | Promise<void>;
   onDelete: (id: number) => void | Promise<void>;
@@ -44,6 +47,7 @@ function ThreadMessageItem({
   isRoot = false,
   tags,
   currentUser,
+  members,
   onReply,
   onEdit,
   onDelete,
@@ -52,6 +56,7 @@ function ThreadMessageItem({
   isRoot?: boolean;
   tags?: Tag[];
   currentUser?: User | null;
+  members?: MentionMember[];
   onReply?: () => void;
   onEdit?: (id: number, newBody: string) => void | Promise<void>;
   onDelete?: (id: number) => void | Promise<void>;
@@ -133,12 +138,13 @@ function ThreadMessageItem({
         </div>
         {editing ? (
           <div className="mt-1">
-            <textarea
+            <MentionTextarea
               autoFocus
               value={editText}
-              onChange={(e) => setEditText(e.target.value)}
+              onValueChange={setEditText}
+              members={members}
               rows={3}
-              className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[13px] leading-relaxed text-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+              className="px-2 py-1.5 text-[13px] leading-relaxed focus-visible:border-primary/50 focus-visible:ring-1 focus-visible:ring-primary/30"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void handleSaveEdit(); }
                 if (e.key === "Escape") { setEditing(false); setEditText(item.body); }
@@ -163,7 +169,7 @@ function ThreadMessageItem({
             </div>
           </div>
         ) : (
-          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/90">{item.body}</p>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/90">{renderMentionBody(item.body)}</p>
         )}
       </div>
     </div>
@@ -175,6 +181,7 @@ export function InlineThreadPopover({
   relatedComments,
   currentUser,
   canComment = true,
+  members,
   onClose,
   onResolve,
   onDelete,
@@ -191,7 +198,7 @@ export function InlineThreadPopover({
   const [resolvePending, setResolvePending] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ threadRootId: number; name: string } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const allThreads = [comment, ...(relatedComments ?? [])];
@@ -340,6 +347,7 @@ export function InlineThreadPopover({
                 isRoot={true}
                 tags={threadIndex === 0 ? (comment.tags ?? []) : undefined}
                 currentUser={currentUser}
+                members={members}
                 onReply={canComment ? () => handleSetReplyingTo(thread) : undefined}
                 onEdit={onEditMessage}
                 onDelete={onDelete}
@@ -350,6 +358,7 @@ export function InlineThreadPopover({
                   item={reply}
                   isRoot={false}
                   currentUser={currentUser}
+                  members={members}
                   onEdit={onEditMessage}
                   onDelete={onDelete}
                 />
@@ -387,12 +396,14 @@ export function InlineThreadPopover({
             />
           ) : null}
           <div className="relative flex-1">
-            <Input
+            <MentionTextarea
               ref={inputRef}
-              className="h-8 w-full rounded-lg border-0 bg-muted/60 pr-8 pl-2.5 text-sm shadow-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+              rows={1}
+              members={members}
+              className="rounded-lg border-0 bg-muted/60 py-1.5 pr-8 pl-2.5 shadow-none focus-visible:ring-1 focus-visible:ring-ring"
               placeholder={canComment ? (replyingTo ? "Reply…" : "New comment…") : "Switch to Commenting mode"}
               value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
+              onValueChange={setReplyText}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
