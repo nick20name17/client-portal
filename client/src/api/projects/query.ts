@@ -27,10 +27,10 @@ export const projectFilesQuery = (projectId: string) =>
     enabled: !!projectId,
   });
 
-export const projectMembersQuery = (projectId: number) =>
+export const projectMembersQuery = (projectId: number | undefined) =>
   queryOptions({
-    queryKey: PROJECT_KEYS.members(projectId),
-    queryFn: () => projectsService.getMembers(projectId),
+    queryKey: PROJECT_KEYS.members(projectId ?? 0),
+    queryFn: () => projectsService.getMembers(projectId!),
     enabled: !!projectId,
   });
 
@@ -53,10 +53,7 @@ export function useProjectFiles(projectId: string | undefined) {
 }
 
 export function useProjectMembers(projectId: number | undefined) {
-  return useQuery({
-    ...projectMembersQuery(projectId ?? 0),
-    enabled: !!projectId,
-  });
+  return useQuery(projectMembersQuery(projectId));
 }
 
 export function useCreateProject() {

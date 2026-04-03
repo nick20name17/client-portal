@@ -145,7 +145,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!newVersionsData?.length) return;
-    const key = JSON.stringify(newVersionsData);
+    const key = newVersionsData.map((e) => `${e.fileId}:${e.newCount}`).sort().join(",");
     if (shownNewVersionsRef.current === key) return;
     shownNewVersionsRef.current = key;
 

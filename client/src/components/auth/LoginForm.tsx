@@ -41,7 +41,7 @@ export function LoginForm() {
       setApiError(res.error.message ?? "Sign in failed");
       return;
     }
-    await queryClient.invalidateQueries({ queryKey: ["session"] });
+    queryClient.removeQueries({ queryKey: ["session"] });
     await navigate({ to: "/" });
   }
 

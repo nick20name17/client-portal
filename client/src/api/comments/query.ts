@@ -35,8 +35,10 @@ export function useCreateComment(projectId: string | undefined, currentUser?: Us
   const qc = useQueryClient();
   const key = COMMENT_KEYS.all(projectId ?? "");
   return useMutation({
-    mutationFn: ({ _tempId: _, _tags: __, ...payload }: CreateCommentVars) =>
-      commentsService.create(projectId!, payload),
+    mutationFn: ({ _tempId: _, _tags: __, ...payload }: CreateCommentVars) => {
+      if (!projectId) throw new Error("projectId required");
+      return commentsService.create(projectId, payload);
+    },
     onMutate: async ({ _tempId, _tags, ...payload }) => {
       await qc.cancelQueries({ queryKey: key });
       const snapshots = qc.getQueriesData<Comment[]>({ queryKey: key });

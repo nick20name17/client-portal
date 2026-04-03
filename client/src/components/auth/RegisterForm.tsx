@@ -1,6 +1,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -28,6 +29,7 @@ type RegisterValues = z.infer<typeof registerSchema>;
 
 export function RegisterForm() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export function RegisterForm() {
       setApiError(res.error.message ?? "Could not create account");
       return;
     }
+    queryClient.removeQueries({ queryKey: ["session"] });
     await navigate({ to: "/" });
   }
 
