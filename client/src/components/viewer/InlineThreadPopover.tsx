@@ -402,6 +402,7 @@ export function InlineThreadPopover({
               members={members}
               className="rounded-lg border-0 bg-muted/60 py-1.5 pr-8 pl-2.5 shadow-none focus-visible:ring-1 focus-visible:ring-ring"
               placeholder={canComment ? (replyingTo ? "Reply…" : "New comment…") : "Switch to Commenting mode"}
+              placeholderClassName="pl-2.5 py-1.5 text-[13px]"
               value={replyText}
               onValueChange={setReplyText}
               onKeyDown={(e) => {

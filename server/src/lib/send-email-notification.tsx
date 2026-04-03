@@ -21,9 +21,10 @@ export type EmailNotificationPayload =
       actorId: string;
     };
 
-function fileUrl(projectId: number | string, fileId: number | string): string {
+function fileUrl(projectId: number | string, fileId: number | string, commentId?: number | string): string {
   const base = env.APP_URL ?? "http://localhost:3001";
-  return `${base}/projects/${projectId}/viewer?file=${fileId}`;
+  const comment = commentId ? `&comment=${commentId}` : "";
+  return `${base}/projects/${projectId}/viewer?file=${fileId}${comment}`;
 }
 
 const TEST_RECIPIENT = "nick20name17@gmail.com"; // TODO: remove after testing
@@ -81,7 +82,8 @@ export async function sendEmailNotification(payload: EmailNotificationPayload): 
   const { comment, project } = row;
   const actor = await getUser(payload.actorId);
   const actorName = actor?.name ?? "Someone";
-  const url = fileUrl(project.id, comment.fileId);
+  const rootCommentId = comment.parentId ?? comment.id;
+  const url = fileUrl(project.id, comment.fileId, rootCommentId);
 
   function withSnippet(base: Omit<React.ComponentProps<typeof NotificationEmail>, "commentSnippet">): React.ComponentProps<typeof NotificationEmail> {
     const snippet = comment.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, "@$1").slice(0, 200);

@@ -13,7 +13,7 @@ import {
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { flushSync } from "react-dom";
 import { ArrowLeft, Expand, MessageCircle, MessageSquarePlus, Minimize } from "lucide-react";
-import { useQueryState } from "nuqs";
+import { parseAsInteger, useQueryState } from "nuqs";
 import { toast } from "sonner";
 
 import { CommentPin, GhostPin } from "@/components/viewer/CommentPin";
@@ -106,6 +106,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const addTag = useAddCommentTag(projectId);
 
   const [fileId, setFileId] = useQueryState("file");
+  const [commentParam, setCommentParam] = useQueryState("comment", parseAsInteger);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [htmlLoading, setHtmlLoading] = useState(false);
@@ -128,6 +129,22 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   // Active thread popover
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
+
+  // Track whether the initial ?comment= URL param has been consumed (thread opened from it).
+  // Declared here so the sync effect below can reference it.
+  const consumedUrlCommentRef = useRef(false);
+
+  // Sync activeThreadId → ?comment= param (skip temp IDs < 0).
+  // Only clear the param once the URL comment has been consumed — avoids wiping it on initial load
+  // before the auto-open effect has a chance to run.
+  useEffect(() => {
+    if (activeThreadId === null || activeThreadId < 0) {
+      if (consumedUrlCommentRef.current) void setCommentParam(null);
+    } else {
+      void setCommentParam(activeThreadId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId]);
 
   // Pending anchor waiting for position resolution — stored in a ref to avoid stale closure race
   const pendingGhostAnchorRef = useRef<Anchor | null>(null);
@@ -563,6 +580,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     else win.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
   }, []);
 
+  // Auto-open thread from URL ?comment= on initial load — waits for pins to be ready
+  useEffect(() => {
+    if (consumedUrlCommentRef.current || !commentParam) return;
+    const pin = pins.find((p) => p.commentId === commentParam);
+    if (!pin) return;
+    consumedUrlCommentRef.current = true;
+    setActiveThreadId(commentParam);
+  }, [commentParam, pins]);
 
   // Handle ghost pin position — store raw iframe coords
   useEffect(() => {

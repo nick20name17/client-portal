@@ -45,7 +45,7 @@ export function UserAvatar({
     <Avatar className={cn("size-8", className)}>
       {image ? <AvatarImage src={image} alt="" /> : null}
       <AvatarFallback
-        className="text-[10px] font-semibold text-white tracking-tight"
+        className={cn("font-semibold text-white tracking-tight", initials.length > 1 ? "text-[9px]" : "text-[11px]")}
         style={{ backgroundColor: bg }}
       >
         {initials || "?"}

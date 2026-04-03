@@ -72,9 +72,11 @@ function serialize(el: HTMLElement): string {
 interface DropdownState {
   items: MentionMember[];
   activeIdx: number;
-  top: number;
-  left: number;
-  width: number;
+  /** Viewport-relative rect of the textarea anchor */
+  anchorTop: number;
+  anchorBottom: number;
+  anchorLeft: number;
+  anchorWidth: number;
 }
 
 interface MentionPendingState {
@@ -89,6 +91,7 @@ interface Props {
   members?: MentionMember[];
   rows?: number;
   placeholder?: string;
+  placeholderClassName?: string;
   disabled?: boolean;
   className?: string;
   autoFocus?: boolean;
@@ -96,11 +99,63 @@ interface Props {
   onBlur?: (e: React.FocusEvent) => void;
 }
 
+// ── Dropdown ───────────────────────────────────────────────────────────────────
+
+const ITEM_HEIGHT = 36;
+const GAP = 4;
+
+function MentionDropdown({ dd, onSelect, activeIdx }: {
+  dd: DropdownState;
+  activeIdx: number;
+  onSelect: (m: MentionMember) => void;
+}) {
+  const estimatedHeight = dd.items.length * ITEM_HEIGHT + 8;
+  const spaceBelow = window.innerHeight - dd.anchorBottom;
+  const placeAbove = spaceBelow < estimatedHeight + GAP;
+  const style: React.CSSProperties = placeAbove
+    ? {
+        position: "fixed",
+        bottom: window.innerHeight - dd.anchorTop + GAP,
+        left: dd.anchorLeft,
+        width: Math.max(dd.anchorWidth, 200),
+        zIndex: 9999,
+      }
+    : {
+        position: "fixed",
+        top: dd.anchorBottom + GAP,
+        left: dd.anchorLeft,
+        width: Math.max(dd.anchorWidth, 200),
+        zIndex: 9999,
+      };
+
+  return (
+    <div style={style} className="overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-xl">
+      {dd.items.map((m, i) => (
+        <button
+          key={m.id}
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onSelect(m);
+          }}
+          className={cn(
+            "flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-foreground transition-colors hover:bg-muted",
+            i === activeIdx && "bg-muted",
+          )}
+        >
+          <UserAvatar name={m.name} image={m.image} userId={m.id} className="size-5 shrink-0" />
+          <span className="truncate">{m.name}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
   function MentionTextarea(
-    { value, onValueChange, members = [], rows = 3, placeholder, disabled, className, autoFocus, onKeyDown, onBlur },
+    { value, onValueChange, members = [], rows = 3, placeholder, placeholderClassName, disabled, className, autoFocus, onKeyDown, onBlur },
     outerRef,
   ) {
     const editorRef = useRef<HTMLDivElement>(null);
@@ -193,9 +248,10 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
       setDd({
         items,
         activeIdx: 0,
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: rect.width,
+        anchorTop: rect.top,
+        anchorBottom: rect.bottom,
+        anchorLeft: rect.left,
+        anchorWidth: rect.width,
       });
     }
 
@@ -351,7 +407,7 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
     return (
       <div className="relative w-full">
         {!hasContent && placeholder ? (
-          <span className="pointer-events-none absolute left-0 top-0 px-3 py-2 text-sm text-muted-foreground select-none">
+          <span className={cn("pointer-events-none absolute left-0 top-0 px-3 py-2 text-sm text-muted-foreground select-none", placeholderClassName)}>
             {placeholder}
           </span>
         ) : null}
@@ -381,34 +437,7 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
         />
         {dd &&
           createPortal(
-            <div
-              style={{
-                position: "absolute",
-                top: dd.top,
-                left: dd.left,
-                width: Math.max(dd.width, 200),
-                zIndex: 9999,
-              }}
-              className="overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-xl"
-            >
-              {dd.items.map((m, i) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    doInsert(m);
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-foreground transition-colors hover:bg-muted",
-                    i === dd.activeIdx && "bg-muted",
-                  )}
-                >
-                  <UserAvatar name={m.name} image={m.image} userId={m.id} className="size-5 shrink-0" />
-                  <span className="truncate">{m.name}</span>
-                </button>
-              ))}
-            </div>,
+            <MentionDropdown dd={dd} activeIdx={dd.activeIdx} onSelect={doInsert} />,
             document.body,
           )}
       </div>
