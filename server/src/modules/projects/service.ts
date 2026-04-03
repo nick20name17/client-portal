@@ -4,6 +4,7 @@ import { comments } from "@/db/schema/comments";
 import { companies } from "@/db/schema/companies";
 import { projectFiles, projectMembers, projects } from "@/db/schema/projects";
 import { canViewProject, getProjectMemberRole, getProjectOrNull } from "@/lib/access";
+import { sendEmailNotification } from "@/lib/send-email-notification";
 import { buildGithubRawUrl, fetchGithubTreeRecursive, parseGithubRepoUrl } from "@/lib/github";
 import { FileVersionService } from "./versions/service";
 import type { SessionUser } from "@/types";
@@ -240,6 +241,12 @@ export const ProjectService = {
         error: "Already a member",
       } satisfies ProjectModel["memberConflict"]);
     }
+    sendEmailNotification({
+      type: "member.added",
+      userId: body.userId,
+      projectId,
+      actorId: user.id,
+    }).catch((err) => console.error("Email failed:", err));
     return row;
   },
 

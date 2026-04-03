@@ -19,6 +19,7 @@ const EnvSchema = t.Object({
   PORT: t.Optional(t.Integer({ minimum: 1, maximum: 65535, default: 3000 })),
   RESEND_API_KEY: t.Optional(t.String()),
   EMAIL_FROM: t.Optional(t.String()),
+  APP_URL: t.Optional(t.String({ format: "uri" })),
 });
 
 export type Env = Static<typeof EnvSchema>;
@@ -34,6 +35,7 @@ const raw = {
       : Number(process.env.PORT),
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   EMAIL_FROM: process.env.EMAIL_FROM,
+  APP_URL: process.env.APP_URL,
 };
 
 const withDefaults = Value.Default(EnvSchema, raw);
