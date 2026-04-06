@@ -48,3 +48,7 @@ export const trustedOrigins = [
     [env.TRUSTED_ORIGIN, env.BETTER_AUTH_URL].map((u) => new URL(u).origin),
   ),
 ];
+
+/** True when frontend and backend are on different origins (e.g. Railway deploy). */
+export const isCrossOrigin =
+  new URL(env.TRUSTED_ORIGIN).origin !== new URL(env.BETTER_AUTH_URL).origin;

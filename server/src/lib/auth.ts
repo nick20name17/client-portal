@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { env, trustedOrigins } from "@/utils/env";
+import { env, isCrossOrigin, trustedOrigins } from "@/utils/env";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { openAPI } from "better-auth/plugins";
@@ -15,6 +15,14 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  advanced: isCrossOrigin
+    ? {
+        defaultCookieAttributes: {
+          sameSite: "none",
+          secure: true,
+        },
+      }
+    : undefined,
   user: {
     additionalFields: {
       role: {
