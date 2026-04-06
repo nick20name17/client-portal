@@ -1,3 +1,0 @@
-[deploy]
-buildCommand = "bun install && bun run --filter=client build"
-startCommand = "bun run --filter=client start"
