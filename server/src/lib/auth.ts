@@ -5,6 +5,8 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { openAPI } from "better-auth/plugins";
 
+const isProd = env.BETTER_AUTH_URL.startsWith("https");
+
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   trustedOrigins,
@@ -12,6 +14,12 @@ export const auth = betterAuth({
     provider: "pg",
     schema,
   }),
+  advanced: {
+    defaultCookieAttributes: {
+      sameSite: isProd ? "none" : "lax",
+      secure: isProd,
+    },
+  },
   emailAndPassword: {
     enabled: true,
   },
