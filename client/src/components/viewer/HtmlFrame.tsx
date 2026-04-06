@@ -19,15 +19,20 @@ const BRIDGE_SCRIPT = `
   //   PAGE_CHANGE — fires after React finishes committing the new page; parent re-requests positions
   var isNavigating = false;
   var pageChangeRaf = 0;
+  var navTimeout = 0;
   function onNavStart() {
     isNavigating = true;
     // Set synchronously on parent window so the parent's scroll handler (which fires
     // before the async postMessage arrives) can skip stale-position re-requests.
     try { window.parent.__ebmsSpaNav = true; } catch(e) {}
     window.parent.postMessage({ type: "PAGE_NAV" }, "*");
+    // Safety: if no DOM mutation arrives within 3s, unstick the flag.
+    clearTimeout(navTimeout);
+    navTimeout = setTimeout(function() { if (isNavigating) onPageChange(); }, 3000);
   }
   function onPageChange() {
     isNavigating = false;
+    clearTimeout(navTimeout);
     try { window.parent.__ebmsSpaNav = false; } catch(e) {}
     window.parent.postMessage({ type: "PAGE_CHANGE" }, "*");
   }

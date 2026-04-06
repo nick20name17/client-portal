@@ -71,7 +71,7 @@ function ThreadMessageItem({
   const [editText, setEditText] = useState(item.body);
 
   const canEdit = currentUser?.id === item.authorId && !!onEdit;
-  const canDel = !isRoot && canDeleteComment(currentUser ?? null, item.authorId) && !!onDelete;
+  const canDel = canDeleteComment(currentUser ?? null, item.authorId) && !!onDelete && (!isRoot || (item.replies?.length ?? 0) === 0);
   const hasReplies = isRoot && (item.replies?.length ?? 0) > 0;
 
   function handleSaveEdit() {

@@ -165,7 +165,7 @@ export function VersionSelector({
                       </div>
                     </div>
                     {v.commitMessage && (
-                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      <div className="mt-0.5 line-clamp-3 text-[11px] text-muted-foreground">
                         {v.commitMessage}
                       </div>
                     )}

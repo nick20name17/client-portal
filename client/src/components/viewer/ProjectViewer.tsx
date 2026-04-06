@@ -165,6 +165,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   // True between PAGE_NAV and PAGE_CHANGE — suppresses scroll-triggered re-requests that
   // would re-add stale pins from the old DOM after navigation clears them.
   const isSpaNavigatingRef = useRef(false);
+  const spaNavTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   useProjectWS(projectId);
 
@@ -243,9 +244,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     fileId ?? undefined,
   );
 
-  // Reset version on file switch, then auto-select latest once list loads
+  // Reset version + stale pins on file switch
   useEffect(() => {
     setSelectedVersionId(null);
+    setPinPositions({});
+    setAnchorResolvedMap({});
+    setActiveThreadId(null);
+    setGhostRaw(null);
   }, [fileId]);
 
   useEffect(() => {
@@ -768,6 +773,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }
 
   async function onUnlink(id: number) {
+    setActiveThreadId(null);
     try {
       await patchComment.mutateAsync({ id, anchor: null });
     } catch (e) {
@@ -892,6 +898,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     function onMsg(e: MessageEvent) {
       if (e.data?.type === "PAGE_NAV") {
         isSpaNavigatingRef.current = true;
+        clearTimeout(spaNavTimeoutRef.current);
+        spaNavTimeoutRef.current = setTimeout(() => {
+          if (isSpaNavigatingRef.current) {
+            isSpaNavigatingRef.current = false;
+            try { (window as any).__ebmsSpaNav = false; } catch {}
+            requestAnchorPositions({ flushSync: true });
+          }
+        }, 3000);
         flushSync(() => {
           setPinPositions({});
           setAnchorResolvedMap({});
@@ -902,6 +916,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       }
       if (e.data?.type === "PAGE_CHANGE") {
         isSpaNavigatingRef.current = false;
+        clearTimeout(spaNavTimeoutRef.current);
         requestAnchorPositions({ flushSync: true });
         // Re-resolve which anchors exist on the new page
         const doc = iframeRef.current?.contentDocument;

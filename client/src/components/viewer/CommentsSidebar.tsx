@@ -1,7 +1,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Check, ChevronDown, Link2Off, MessageSquarePlus, Pencil, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, GripVertical, Link2Off, MessageSquarePlus, Pencil, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -123,7 +123,10 @@ function CommentThread({
               {isOrphaned ? (
                 <span className="text-[11px] font-medium text-red-500">Related element not found</span>
               ) : isUnlinked ? (
-                <span className="text-[11px] font-medium text-amber-500">Needs element link</span>
+                <span className="flex w-full items-center text-[11px] font-medium text-amber-500">
+                  Drag to canvas to link
+                  <GripVertical className="ml-auto size-4" />
+                </span>
               ) : comment.resolved ? (
                 <span className="text-[11px] font-medium" style={{ color: "var(--status-done)" }}>Resolved</span>
               ) : null}

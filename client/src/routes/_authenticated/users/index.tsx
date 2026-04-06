@@ -335,7 +335,7 @@ function UsersContent() {
                   <Input
                     id="user-pw"
                     type="password"
-                    placeholder="Min. 8 characters"
+                    placeholder="••••••••"
                     autoComplete="new-password"
                     value={form.tmpPassword}
                     onChange={(e) => setForm((f) => ({ ...f, tmpPassword: e.target.value }))}
