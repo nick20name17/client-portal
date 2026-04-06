@@ -1,0 +1,3 @@
+[deploy]
+buildCommand = "bun install && bun run --filter=app build"
+startCommand = "bun run --filter=app start"
