@@ -13,7 +13,7 @@ FormatRegistry.Set("uri", (value) => {
 
 const EnvSchema = t.Object({
   DATABASE_URL: t.String({ minLength: 1, format: "uri" }),
-  TRUSTED_ORIGIN: t.String({ minLength: 1, format: "uri" }),
+  TRUSTED_ORIGINS: t.String({ minLength: 1 }),
   BETTER_AUTH_URL: t.String({ minLength: 1, format: "uri" }),
   BETTER_AUTH_SECRET: t.String({ minLength: 32 }),
   PORT: t.Optional(t.Integer({ minimum: 1, maximum: 65535, default: 3000 })),
@@ -27,7 +27,7 @@ type Env = Static<typeof EnvSchema>;
 
 const raw = {
   DATABASE_URL: process.env.DATABASE_URL,
-  TRUSTED_ORIGIN: process.env.TRUSTED_ORIGIN,
+  TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
   PORT:
@@ -44,13 +44,17 @@ const withDefaults = Value.Default(EnvSchema, raw);
 const converted = Value.Convert(EnvSchema, withDefaults);
 export const env: Env = Value.Parse(EnvSchema, converted);
 
-/** Frontend + API origins for CORS and Better Auth (e.g. Scalar/OpenAPI use the API host as Origin). */
+/** Parse comma-separated trusted origins + API origin, deduplicated. */
+const parsedOrigins = env.TRUSTED_ORIGINS.split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((u) => new URL(u).origin);
+
 export const trustedOrigins = [
-  ...new Set(
-    [env.TRUSTED_ORIGIN, env.BETTER_AUTH_URL].map((u) => new URL(u).origin),
-  ),
+  ...new Set([...parsedOrigins, new URL(env.BETTER_AUTH_URL).origin]),
 ];
 
-/** True when frontend and backend are on different origins (e.g. Railway deploy). */
-export const isCrossOrigin =
-  new URL(env.TRUSTED_ORIGIN).origin !== new URL(env.BETTER_AUTH_URL).origin;
+/** True when any trusted origin differs from the API origin. */
+export const isCrossOrigin = parsedOrigins.some(
+  (o) => o !== new URL(env.BETTER_AUTH_URL).origin,
+);
