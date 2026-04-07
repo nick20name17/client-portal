@@ -364,6 +364,71 @@ function DeleteProjectDialog({
   );
 }
 
+function ArchivedProjectsGrid({
+  archivedProjects,
+  showArchived,
+  onToggleArchived,
+  onUnarchive,
+  onDelete,
+}: {
+  archivedProjects: Project[];
+  showArchived: boolean;
+  onToggleArchived: () => void;
+  onUnarchive: (id: number) => void;
+  onDelete: (p: Project) => void;
+}) {
+  if (!archivedProjects.length) return null;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggleArchived}
+        className="flex items-center gap-1.5 text-[13px] font-medium text-text-secondary hover:text-foreground transition-colors"
+      >
+        <ChevronDown className={`size-3.5 transition-transform ${showArchived ? "" : "-rotate-90"}`} />
+        Archived ({archivedProjects.length})
+      </button>
+      {showArchived ? (
+        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {archivedProjects.map((p) => (
+            <div key={p.id} className="relative group/card opacity-60 hover:opacity-100 transition-opacity">
+              <ProjectPreviewCard project={p} />
+              <div className="absolute right-2 top-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon-sm"
+                      className="size-7 rounded-md bg-background/90 backdrop-blur-sm shadow-sm"
+                      onClick={(e) => e.preventDefault()}
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => onUnarchive(p.id)}>
+                      <ArchiveRestore className="size-4" />
+                      Restore
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => onDelete(p)}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete permanently
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // --- Main component ---
 
 function DashboardPage() {
@@ -590,53 +655,13 @@ function DashboardPage() {
       )}
 
       {isAdmin && archivedProjects && archivedProjects.length > 0 ? (
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowArchived((v) => !v)}
-            className="flex items-center gap-1.5 text-[13px] font-medium text-text-secondary hover:text-foreground transition-colors"
-          >
-            <ChevronDown className={`size-3.5 transition-transform ${showArchived ? "" : "-rotate-90"}`} />
-            Archived ({archivedProjects.length})
-          </button>
-          {showArchived ? (
-            <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {archivedProjects.map((p) => (
-                <div key={p.id} className="relative group/card opacity-60 hover:opacity-100 transition-opacity">
-                  <ProjectPreviewCard project={p} />
-                  <div className="absolute right-2 top-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="secondary"
-                          size="icon-sm"
-                          className="size-7 rounded-md bg-background/90 backdrop-blur-sm shadow-sm"
-                          onClick={(e) => e.preventDefault()}
-                        >
-                          <MoreHorizontal className="size-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => void handleUnarchive(p.id)}>
-                          <ArchiveRestore className="size-4" />
-                          Restore
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => dispatch({ type: "SET_DELETE_TARGET", payload: p })}
-                        >
-                          <Trash2 className="size-4" />
-                          Delete permanently
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <ArchivedProjectsGrid
+          archivedProjects={archivedProjects}
+          showArchived={showArchived}
+          onToggleArchived={() => setShowArchived((v) => !v)}
+          onUnarchive={(id) => void handleUnarchive(id)}
+          onDelete={(p) => dispatch({ type: "SET_DELETE_TARGET", payload: p })}
+        />
       ) : null}
 
       <ProjectFormDialog

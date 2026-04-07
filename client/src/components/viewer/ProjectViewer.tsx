@@ -48,7 +48,7 @@ import { useFileVersions, useCheckNewVersions, FILE_VERSION_KEYS } from "@/api/f
 import { useProjectFiles, useProject, useProjectMembers } from "@/api/projects/query";
 import { useProjectWS } from "@/api/ws/use-project-ws";
 import { useTags } from "@/api/tags/query";
-import { apiText } from "@/lib/api";
+import { apiText, apiErrorMsg } from "@/lib/api";
 import { measureAnchorsInIframe, resolveAnchorInDocument } from "@/lib/iframe-anchor-positions";
 import type { Anchor, Comment } from "@/types";
 
@@ -221,41 +221,35 @@ function useViewerComments({
     dispatch({ type: "SET_GHOST", ghost: null });
     setSelectedTagIds([]);
     dispatch({ type: "SET_ACTIVE_THREAD", id: tempId });
-    try {
-      const row = await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId: selectedVersionId!,
-        body,
-        anchor,
-        parentId: undefined,
-        _tempId: tempId,
-        _tags: optimisticTags,
-      });
-      for (const tagId of tagsToAdd) {
-        await addTag.mutateAsync({ commentId: row.id, tagId });
-      }
-      dispatch({ type: "UPDATE_ACTIVE_THREAD", updater: (prev) => (prev === tempId ? row.id : prev) });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to post");
+    const row = await createComment.mutateAsync({
+      fileId: Number(fileId),
+      versionId: selectedVersionId!,
+      body,
+      anchor,
+      parentId: undefined,
+      _tempId: tempId,
+      _tags: optimisticTags,
+    }).catch((e: unknown) => {
+      toast.error(apiErrorMsg(e, "Failed to post"));
       dispatch({ type: "SET_ACTIVE_THREAD", id: null });
+      return null;
+    });
+    if (!row) return;
+    for (const tagId of tagsToAdd) {
+      await addTag.mutateAsync({ commentId: row.id, tagId }).catch(() => {});
     }
+    dispatch({ type: "UPDATE_ACTIVE_THREAD", updater: (prev) => (prev === tempId ? row.id : prev) });
   }, [fileId, selectedVersionId, ghostRaw, selectedTagIds, tagList, dispatch, createComment, addTag, setSelectedTagIds]);
 
   const onResolve = useCallback(async (id: number, resolved: boolean) => {
-    try {
-      await patchComment.mutateAsync({ id, resolved });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Update failed");
-    }
+    await patchComment.mutateAsync({ id, resolved })
+      .catch((e: unknown) => { toast.error(apiErrorMsg(e, "Update failed")); });
   }, [patchComment]);
 
   const onDelete = useCallback(async (id: number) => {
     if (activeThreadId === id) dispatch({ type: "SET_ACTIVE_THREAD", id: null });
-    try {
-      await deleteComment.mutateAsync(id);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
-    }
+    await deleteComment.mutateAsync(id)
+      .catch((e: unknown) => { toast.error(apiErrorMsg(e, "Delete failed")); });
   }, [activeThreadId, dispatch, deleteComment]);
 
   const onReply = useCallback(async (commentId: number, body: string) => {
@@ -263,17 +257,16 @@ function useViewerComments({
     const parent = topLevelComments.find((c) => c.id === commentId);
     const versionId = selectedVersionId;
     if (!versionId) return;
-    try {
-      await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId,
-        body,
-        anchor: parent?.anchor ?? emptyAnchor(),
-        parentId: commentId,
-      });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to reply");
-    }
+    const anchor = parent?.anchor ?? emptyAnchor();
+    await createComment.mutateAsync({
+      fileId: Number(fileId),
+      versionId,
+      body,
+      anchor,
+      parentId: commentId,
+    }).catch((e: unknown) => {
+      toast.error(apiErrorMsg(e, "Failed to reply"));
+    });
   }, [fileId, selectedVersionId, topLevelComments, createComment]);
 
   const onNewCommentFromThread = useCallback(async (sourceCommentId: number, body: string) => {
@@ -281,17 +274,16 @@ function useViewerComments({
     const source = topLevelComments.find((c) => c.id === sourceCommentId);
     const versionId = selectedVersionId;
     if (!versionId) return;
-    try {
-      await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId,
-        body,
-        anchor: source?.anchor ?? emptyAnchor(),
-        parentId: undefined,
-      });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to post");
-    }
+    const anchor = source?.anchor ?? emptyAnchor();
+    await createComment.mutateAsync({
+      fileId: Number(fileId),
+      versionId,
+      body,
+      anchor,
+      parentId: undefined,
+    }).catch((e: unknown) => {
+      toast.error(apiErrorMsg(e, "Failed to post"));
+    });
   }, [fileId, selectedVersionId, topLevelComments, createComment]);
 
   const onSubmitDirectComment = useCallback(async (body: string) => {
@@ -302,39 +294,33 @@ function useViewerComments({
     const optimisticTags = (tagList ?? []).filter((t) => tagsToAdd.includes(t.id));
     setSelectedTagIds([]);
     dispatch({ type: "SET_ACTIVE_THREAD", id: tempId });
-    try {
-      const row = await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId: selectedVersionId,
-        body,
-        anchor: emptyAnchor(),
-        parentId: undefined,
-        _tempId: tempId,
-        _tags: optimisticTags,
-      });
-      for (const tagId of tagsToAdd) await addTag.mutateAsync({ commentId: row.id, tagId });
-      dispatch({ type: "UPDATE_ACTIVE_THREAD", updater: (prev) => (prev === tempId ? row.id : prev) });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to post");
+    const row = await createComment.mutateAsync({
+      fileId: Number(fileId),
+      versionId: selectedVersionId,
+      body,
+      anchor: emptyAnchor(),
+      parentId: undefined,
+      _tempId: tempId,
+      _tags: optimisticTags,
+    }).catch((e: unknown) => {
+      toast.error(apiErrorMsg(e, "Failed to post"));
       dispatch({ type: "SET_ACTIVE_THREAD", id: null });
-    }
+      return null;
+    });
+    if (!row) return;
+    for (const tagId of tagsToAdd) await addTag.mutateAsync({ commentId: row.id, tagId }).catch(() => {});
+    dispatch({ type: "UPDATE_ACTIVE_THREAD", updater: (prev) => (prev === tempId ? row.id : prev) });
   }, [fileId, selectedVersionId, selectedTagIds, tagList, dispatch, createComment, addTag, setSelectedTagIds]);
 
   const onEditComment = useCallback(async (id: number, body: string) => {
-    try {
-      await patchComment.mutateAsync({ id, body });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Edit failed");
-    }
+    await patchComment.mutateAsync({ id, body })
+      .catch((e: unknown) => { toast.error(apiErrorMsg(e, "Edit failed")); });
   }, [patchComment]);
 
   const onUnlink = useCallback(async (id: number) => {
     dispatch({ type: "SET_ACTIVE_THREAD", id: null });
-    try {
-      await patchComment.mutateAsync({ id, anchor: null });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    }
+    await patchComment.mutateAsync({ id, anchor: null })
+      .catch((e: unknown) => { toast.error(apiErrorMsg(e, "Failed")); });
   }, [dispatch, patchComment]);
 
   return { onSubmitNewComment, onResolve, onDelete, onReply, onNewCommentFromThread, onSubmitDirectComment, onEditComment, onUnlink };
@@ -347,19 +333,21 @@ function useViewerDnd({
   topLevelComments,
   patchComment,
   processAnchorSelected,
+  pendingContextMenuFractionRef,
+  contextMenuTriggerRef,
 }: {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   topLevelComments: Comment[];
   patchComment: ReturnType<typeof usePatchComment>;
   processAnchorSelected: (anchor: Anchor) => void;
+  pendingContextMenuFractionRef: React.MutableRefObject<{ fX: number; fY: number } | null>;
+  contextMenuTriggerRef: React.RefObject<HTMLSpanElement | null>;
 }) {
   const [reLinkCommentId, setReLinkCommentId] = useState<number | null>(null);
   const reLinkCommentIdRef = useRef<number | null>(null);
-  reLinkCommentIdRef.current = reLinkCommentId;
+  useEffect(() => { reLinkCommentIdRef.current = reLinkCommentId; }, [reLinkCommentId]);
   const patchCommentRef = useRef(patchComment);
-  patchCommentRef.current = patchComment;
-  const pendingContextMenuFractionRef = useRef<{ fX: number; fY: number } | null>(null);
-  const contextMenuTriggerRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => { patchCommentRef.current = patchComment; }, [patchComment]);
   const [isOverIframe, setIsOverIframe] = useState(false);
   const pointerPosRef = useRef<{ x: number; y: number } | null>(null);
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -456,8 +444,6 @@ function useViewerDnd({
     onDragEnd,
     onReLink,
     draggedComment,
-    contextMenuTriggerRef,
-    pendingContextMenuFractionRef,
   };
 }
 
@@ -490,7 +476,8 @@ function useViewerIframe({
   spaNavTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | undefined>;
   dispatch: React.Dispatch<ViewerAction>;
 }) {
-  const [iframeVersion, setIframeVersion] = useState(0);
+  const [cachedOverlayRect, setCachedOverlayRect] = useState<DOMRect | null>(null);
+  const [cachedIframeRect, setCachedIframeRect] = useState<DOMRect | null>(null);
 
   const requestAnchorPositions = useCallback(
     (opts?: { flushSync?: boolean }) => {
@@ -650,8 +637,12 @@ function useViewerIframe({
   useEffect(() => {
     const el = overlayRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => { requestAnchorPositions(); });
+    const ro = new ResizeObserver(() => {
+      requestAnchorPositions();
+      setCachedOverlayRect(el.getBoundingClientRect());
+    });
     ro.observe(el);
+    setCachedOverlayRect(el.getBoundingClientRect());
     return () => ro.disconnect();
   }, [requestAnchorPositions, overlayRef]);
 
@@ -659,8 +650,12 @@ function useViewerIframe({
   useEffect(() => {
     const el = iframeRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setIframeVersion((v) => v + 1));
+    const updateRect = () => {
+      setCachedIframeRect(el.getBoundingClientRect());
+    };
+    const ro = new ResizeObserver(updateRect);
     ro.observe(el);
+    setCachedIframeRect(el.getBoundingClientRect());
     return () => ro.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -684,7 +679,8 @@ function useViewerIframe({
         Math.abs(next.height - prev.height) > 0.25
       ) {
         prev = next;
-        setIframeVersion((v) => v + 1);
+        setCachedIframeRect(next);
+        setCachedOverlayRect(overlayRef.current?.getBoundingClientRect() ?? null);
       }
       if (frame < maxFrames) raf = window.requestAnimationFrame(step);
     };
@@ -742,22 +738,17 @@ function useViewerIframe({
 
   const rawToOverlay = useCallback(
     (cx: number, cy: number, scrollWidth: number, scrollHeight: number): { x: number; y: number } => {
-      const overlay = overlayRef.current;
-      const iframeEl = iframeRef.current;
-      if (!overlay || !iframeEl) return { x: cx, y: cy };
-      const oRect = overlay.getBoundingClientRect();
-      const iRect = iframeEl.getBoundingClientRect();
-      const scaleX = scrollWidth > 0 ? iRect.width / scrollWidth : 1;
-      const scaleY = scrollHeight > 0 ? iRect.height / scrollHeight : 1;
-      const dx = iRect.left - oRect.left;
-      const dy = iRect.top - oRect.top;
+      if (!cachedOverlayRect || !cachedIframeRect) return { x: cx, y: cy };
+      const scaleX = scrollWidth > 0 ? cachedIframeRect.width / scrollWidth : 1;
+      const scaleY = scrollHeight > 0 ? cachedIframeRect.height / scrollHeight : 1;
+      const dx = cachedIframeRect.left - cachedOverlayRect.left;
+      const dy = cachedIframeRect.top - cachedOverlayRect.top;
       return {
         x: Math.round(cx * scaleX + dx),
         y: Math.round(cy * scaleY + dy),
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [iframeVersion],
+    [cachedOverlayRect, cachedIframeRect],
   );
 
   const ghostPin = useMemo(() => {
@@ -792,9 +783,295 @@ function useViewerIframe({
   return { pins, ghostPin, sendHighlight, handleFrameReady, requestAnchorPositions };
 }
 
+/* ──────────────────────────── Sub-components ──────────────────────────── */
+
+function ViewerHeaderBar({
+  projectName,
+  files,
+  fileId,
+  projectId,
+  selectedVersionId,
+  forceOpenVersionSelector,
+  canManageVersions,
+  isFullscreen,
+  isMobile,
+  mobileSheet,
+  sidebarProps,
+  dispatch,
+  onSetFileId,
+  onToggleFullscreen,
+}: {
+  projectName: string;
+  files: { id: number; path: string }[] | undefined;
+  fileId: string | null;
+  projectId: string;
+  selectedVersionId: number | null;
+  forceOpenVersionSelector: boolean;
+  canManageVersions: boolean;
+  isFullscreen: boolean;
+  isMobile: boolean;
+  mobileSheet: boolean;
+  sidebarProps: React.ComponentProps<typeof CommentsSidebar>;
+  dispatch: React.Dispatch<ViewerAction>;
+  onSetFileId: (id: string) => void;
+  onToggleFullscreen: () => void;
+}) {
+  if (isFullscreen) return null;
+  return (
+    <div className="absolute left-0 right-0 top-0 z-40 flex flex-col border-b border-border/60 bg-background/80 backdrop-blur-xl">
+      <div className="flex items-center gap-1.5 px-3 py-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-foreground" asChild>
+              <Link to="/" aria-label="Back to projects">
+                <ArrowLeft className="size-3.5" />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Back to projects</TooltipContent>
+        </Tooltip>
+
+        <div className="mx-0.5 h-4 w-px bg-border/60" />
+
+        <div className="flex min-w-0 items-center gap-1 text-[13px]">
+          <span className="truncate text-muted-foreground">{projectName}</span>
+          {files?.find((f) => String(f.id) === fileId) ? (
+            <>
+              <span className="text-muted-foreground/30 mx-0.5">/</span>
+              <span className="truncate font-medium text-foreground">
+                {files.find((f) => String(f.id) === fileId)?.path.split("/").pop() ?? ""}
+              </span>
+            </>
+          ) : null}
+          {fileId ? (
+            <VersionSelector
+              projectId={projectId}
+              fileId={fileId}
+              selectedVersionId={selectedVersionId}
+              onSelectVersion={(id) => dispatch({ type: "SET_VERSION", id })}
+              canManage={canManageVersions}
+              forceOpen={forceOpenVersionSelector}
+              onForceOpenHandled={() => dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: false })}
+            />
+          ) : null}
+        </div>
+
+        <div className="flex-1" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground" onClick={onToggleFullscreen}>
+              {isFullscreen ? <Minimize className="size-3.5" /> : <Expand className="size-3.5" />}
+              <span className="sr-only">Toggle fullscreen</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Fullscreen</TooltipContent>
+        </Tooltip>
+        {isMobile ? (
+          <Sheet open={mobileSheet} onOpenChange={(open) => dispatch({ type: "SET_MOBILE_SHEET", open })}>
+            <SheetTrigger asChild>
+              <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-foreground lg:hidden">
+                <MessageCircle className="size-4" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-[85dvh] p-0">
+              <CommentsSidebar
+                {...sidebarProps}
+                onClose={() => dispatch({ type: "SET_MOBILE_SHEET", open: false })}
+              />
+            </SheetContent>
+          </Sheet>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden size-7 text-muted-foreground hover:text-foreground lg:inline-flex"
+                onClick={() => dispatch({ type: "TOGGLE_COMMENTS_OPEN" })}
+                aria-label="Toggle comments"
+              >
+                <MessageCircle className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Toggle comments</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1 overflow-x-auto border-t border-border/40 px-3 py-2 scrollbar-none">
+        {(files ?? []).map((f) => {
+          const active = String(f.id) === fileId;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => onSetFileId(String(f.id))}
+              className={cn(
+                "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
+                active
+                  ? "bg-foreground/8 text-foreground"
+                  : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+              )}
+            >
+              {f.path.split("/").pop() ?? f.path}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PinOverlay({
+  overlayRef,
+  showComposePopover,
+  ghostPin,
+  pins,
+  comments,
+  activeThreadId,
+  showThreadPopover,
+  popoverDisplay,
+  user,
+  tagOptions,
+  selectedTagIds,
+  mentionMembers,
+  canManageVersions,
+  commentHandlers,
+  pendingGhostAnchorRef,
+  sendHighlight,
+  dispatch,
+  onToggleTag,
+}: {
+  overlayRef: React.RefObject<HTMLDivElement | null>;
+  showComposePopover: boolean;
+  ghostPin: { x: number; y: number; anchor: Anchor } | null;
+  pins: PinPosition[];
+  comments: Comment[] | undefined;
+  activeThreadId: number | null;
+  showThreadPopover: boolean;
+  popoverDisplay: { threadId: number; pin: PinPosition; comment: Comment; relatedComments: Comment[] } | null;
+  user: import("@/types").User | null;
+  tagOptions: import("@/types").Tag[];
+  selectedTagIds: number[];
+  mentionMembers: import("@/components/comments/MentionTextarea").MentionMember[];
+  canManageVersions: boolean;
+  commentHandlers: ReturnType<typeof useViewerComments>;
+  pendingGhostAnchorRef: React.MutableRefObject<Anchor | null>;
+  sendHighlight: (a: Anchor | null) => void;
+  dispatch: React.Dispatch<ViewerAction>;
+  onToggleTag: (id: number) => void;
+}) {
+  return (
+    <div
+      ref={overlayRef}
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+    >
+      {showComposePopover && ghostPin ? (
+        <>
+          <GhostPin x={ghostPin.x} y={ghostPin.y} />
+          <Popover open={showComposePopover}>
+            <PopoverAnchor asChild>
+              <div
+                className="pointer-events-none absolute z-40"
+                style={{ left: ghostPin.x, top: ghostPin.y, width: 1, height: 1 }}
+              />
+            </PopoverAnchor>
+            <PopoverContent
+              side="right"
+              align="start"
+              sideOffset={16}
+              collisionPadding={12}
+              className="w-auto border-0 bg-transparent p-0 shadow-none"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              <NewCommentComposePopover
+                currentUser={user}
+                tagOptions={tagOptions}
+                selectedTagIds={selectedTagIds}
+                onToggleTag={onToggleTag}
+                onSubmit={commentHandlers.onSubmitNewComment}
+                onCancel={() => dispatch({ type: "SET_GHOST", ghost: null })}
+                members={mentionMembers}
+              />
+            </PopoverContent>
+          </Popover>
+        </>
+      ) : null}
+
+      {pins.map((pin, pinIndex) => {
+        const comment = comments?.find((c) => c.id === pin.commentId);
+        if (!comment) return null;
+        const replyCount = comment.replies?.length ?? 0;
+        return (
+          <CommentPin
+            key={pin.commentId}
+            comment={comment}
+            x={pin.x}
+            y={pin.y}
+            isActive={activeThreadId === pin.commentId}
+            isOrphaned={pin.orphaned}
+            replyCount={replyCount}
+            index={pinIndex}
+            onClick={() => {
+              dispatch({ type: "SET_GHOST", ghost: null });
+              pendingGhostAnchorRef.current = null;
+              dispatch({ type: "SET_ACTIVE_THREAD", id: activeThreadId === pin.commentId ? null : pin.commentId });
+              sendHighlight(comment.anchor as Anchor);
+            }}
+          />
+        );
+      })}
+
+      {popoverDisplay ? (
+        <Popover
+          key={popoverDisplay.threadId}
+          open={showThreadPopover}
+          onOpenChange={(open) => {
+            if (!open) dispatch({ type: "SET_ACTIVE_THREAD", id: null });
+          }}
+        >
+          <PopoverAnchor asChild>
+            <div
+              className="pointer-events-none absolute z-50"
+              style={{ left: popoverDisplay.pin.x, top: popoverDisplay.pin.y, width: 1, height: 1 }}
+            />
+          </PopoverAnchor>
+          <PopoverContent
+            side="right"
+            align="start"
+            sideOffset={16}
+            collisionPadding={12}
+            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            <InlineThreadPopover
+              comment={popoverDisplay.comment}
+              relatedComments={popoverDisplay.relatedComments}
+              currentUser={user}
+              canComment={true}
+              members={mentionMembers}
+              onClose={() => dispatch({ type: "SET_ACTIVE_THREAD", id: null })}
+              onResolve={commentHandlers.onResolve}
+              onDelete={commentHandlers.onDelete}
+              onReply={commentHandlers.onReply}
+              onNewComment={commentHandlers.onNewCommentFromThread}
+              onEditMessage={commentHandlers.onEditComment}
+              onUnlink={canManageVersions ? commentHandlers.onUnlink : undefined}
+              isOrphaned={popoverDisplay.pin.orphaned}
+            />
+          </PopoverContent>
+        </Popover>
+      ) : null}
+    </div>
+  );
+}
+
 /* ──────────────────────────── ProjectViewer ──────────────────────────── */
 
-export function ProjectViewer({ projectId }: { projectId: string }) {
+/* ──────────────── Extracted hook: useProjectViewerData ──────────────── */
+
+function useProjectViewerData(projectId: string) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const viewerRootRef = useRef<HTMLDivElement>(null);
@@ -823,12 +1100,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [vs, dispatch] = useReducer(viewerReducer, viewerInitial);
   const { html, htmlLoading, htmlError, pinPositions, anchorResolvedMap, activeThreadId, ghostRaw, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector } = vs;
 
-  // Raw ghost coords ref for stable access in callbacks
   const ghostRawRef = useRef(ghostRaw);
   useEffect(() => { ghostRawRef.current = ghostRaw; }, [ghostRaw]);
 
-  // Keeps last known pin/comment so Radix can animate out before unmounting
-  const lastPopoverStateRef = useRef<{
+  const [lastPopoverState, setLastPopoverState] = useState<{
     threadId: number;
     pin: PinPosition;
     comment: Comment;
@@ -837,7 +1112,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   const consumedUrlCommentRef = useRef(false);
 
-  // Sync activeThreadId → ?comment= param
   useEffect(() => {
     if (activeThreadId === null || activeThreadId < 0) {
       if (consumedUrlCommentRef.current) void setCommentParam(null);
@@ -864,33 +1138,25 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     const key = newVersionsData.map((e) => `${e.fileId}:${e.newCount}`).sort().join(",");
     if (shownNewVersionsRef.current === key) return;
     shownNewVersionsRef.current = key;
-
     for (const entry of newVersionsData) {
       void queryClient.invalidateQueries({
         queryKey: FILE_VERSION_KEYS.all(projectId, String(entry.fileId)),
       });
     }
-
     for (const entry of newVersionsData) {
       const fileName = entry.filePath.split("/").pop() ?? entry.filePath;
-      toast(
-        `New version available for ${fileName}`,
-        {
-          description: `${entry.newCount} new commit${entry.newCount > 1 ? "s" : ""} found`,
-          duration: Infinity,
-          action: {
-            label: "Change version",
-            onClick: () => {
-              void setFileId(String(entry.fileId));
-              dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: true });
-            },
-          },
-          cancel: {
-            label: "Dismiss",
-            onClick: () => {},
+      toast(`New version available for ${fileName}`, {
+        description: `${entry.newCount} new commit${entry.newCount > 1 ? "s" : ""} found`,
+        duration: Infinity,
+        action: {
+          label: "Change version",
+          onClick: () => {
+            void setFileId(String(entry.fileId));
+            dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: true });
           },
         },
-      );
+        cancel: { label: "Dismiss", onClick: () => {} },
+      });
     }
   }, [newVersionsData, setFileId, queryClient, projectId]);
 
@@ -904,10 +1170,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   // Fetch HTML
   useEffect(() => {
-    if (!projectId || !fileId) {
-      dispatch({ type: "CLEAR_HTML" });
-      return;
-    }
+    if (!projectId || !fileId) { dispatch({ type: "CLEAR_HTML" }); return; }
     let cancelled = false;
     dispatch({ type: "HTML_FETCH_START" });
     const suffix = selectedVersionId ? `?versionId=${selectedVersionId}` : "";
@@ -920,12 +1183,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const canManageVersions = user?.role === "admin" || user?.role === "manager";
   const { data: fileVersionsList } = useFileVersions(projectId, fileId ?? undefined);
 
-  // Reset version + stale pins on file switch (render-time derivation)
   const prevFileIdRef = useRef(fileId);
-  if (fileId !== prevFileIdRef.current) {
-    prevFileIdRef.current = fileId;
-    dispatch({ type: "FILE_SWITCH_RESET" });
-  }
+  useEffect(() => {
+    if (fileId !== prevFileIdRef.current) {
+      prevFileIdRef.current = fileId;
+      dispatch({ type: "FILE_SWITCH_RESET" });
+    }
+  }, [fileId, dispatch]);
 
   useEffect(() => {
     if (!fileVersionsList?.length) return;
@@ -956,9 +1220,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, [comments]);
 
   const commentAnchors = useMemo(() => {
-    const rows = topLevelComments;
     const anchors: Anchor[] = [];
-    for (const c of rows) {
+    for (const c of topLevelComments) {
       anchors.push(c.anchor as Anchor);
       for (const r of c.replies ?? []) anchors.push(r.anchor as Anchor);
     }
@@ -975,18 +1238,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, []);
 
   const iframe = useViewerIframe({
-    iframeRef,
-    overlayRef,
-    topLevelComments,
-    pinPositions,
-    ghostRaw,
-    ghostRawRef,
-    isFullscreen,
-    commentsOpen,
-    anchorResolutionItems,
-    isSpaNavigatingRef,
-    spaNavTimeoutRef,
-    dispatch,
+    iframeRef, overlayRef, topLevelComments, pinPositions, ghostRaw, ghostRawRef,
+    isFullscreen, commentsOpen, anchorResolutionItems, isSpaNavigatingRef, spaNavTimeoutRef, dispatch,
   });
 
   // Auto-open thread from URL ?comment=
@@ -998,7 +1251,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     dispatch({ type: "SET_ACTIVE_THREAD", id: commentParam });
   }, [commentParam, iframe.pins]);
 
-  // Handle ghost pin position
+  // Ghost pin position messages
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (e.data?.type === "MATCH_EXISTING_THREAD_RESULT") {
@@ -1006,7 +1259,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         const anchor = pendingGhostAnchorRef.current;
         if (!anchor) return;
         pendingMatchRequestIdRef.current = null;
-
         const existingThreadId =
           typeof e.data.commentId === "string" && e.data.commentId.trim() ? e.data.commentId : null;
         if (existingThreadId) {
@@ -1014,25 +1266,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           dispatch({ type: "SET_GHOST", ghost: null });
           const existing = topLevelComments.find((c) => String(c.id) === existingThreadId);
           if (existing) iframe.sendHighlight(existing.anchor as Anchor);
-          setTimeout(() => {
-            dispatch({ type: "SET_ACTIVE_THREAD", id: Number(existingThreadId) });
-          }, 150);
+          setTimeout(() => { dispatch({ type: "SET_ACTIVE_THREAD", id: Number(existingThreadId) }); }, 150);
           return;
         }
-
         iframeRef.current?.contentWindow?.postMessage({
-          type: "GET_ANCHOR_POSITIONS",
-          requestId: "ghost",
+          type: "GET_ANCHOR_POSITIONS", requestId: "ghost",
           comments: [{ id: "__ghost__", anchor }],
         }, "*");
         return;
       }
-
-      if (
-        e.data?.type === "ANCHOR_POSITIONS" &&
-        e.data.requestId === "ghost" &&
-        e.data.positions?.__ghost__
-      ) {
+      if (e.data?.type === "ANCHOR_POSITIONS" && e.data.requestId === "ghost" && e.data.positions?.__ghost__) {
         const anchor = pendingGhostAnchorRef.current;
         if (!anchor) return;
         const pos = e.data.positions.__ghost__ as {
@@ -1041,11 +1284,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         };
         pendingGhostAnchorRef.current = null;
         dispatch({ type: "SET_GHOST", ghost: {
-          cx: pos.left + pos.width / 2,
-          cy: pos.top + pos.height / 2,
-          scrollWidth: pos.scrollWidth,
-          scrollHeight: pos.scrollHeight,
-          anchor,
+          cx: pos.left + pos.width / 2, cy: pos.top + pos.height / 2,
+          scrollWidth: pos.scrollWidth, scrollHeight: pos.scrollHeight, anchor,
         }});
       }
     }
@@ -1053,15 +1293,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return () => window.removeEventListener("message", onMsg);
   }, [topLevelComments, iframe.sendHighlight]);
 
+  // Fullscreen listeners
   useEffect(() => {
-    function onFullscreenChange() {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    }
+    function onFullscreenChange() { setIsFullscreen(Boolean(document.fullscreenElement)); }
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
-  // Fullscreen enter — single dispatch replaces multi-setState
   useEffect(() => {
     if (!isFullscreen) return;
     dispatch({ type: "FULLSCREEN_ENTER" });
@@ -1079,37 +1317,48 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     const win = iframeRef.current?.contentWindow;
     win?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
     win?.postMessage({
-      type: "MATCH_EXISTING_THREAD",
-      requestId,
-      selectedAnchor: anchor,
-      comments: topLevelCommentsWithAnchors,
+      type: "MATCH_EXISTING_THREAD", requestId,
+      selectedAnchor: anchor, comments: topLevelCommentsWithAnchors,
     }, "*");
   }, [topLevelComments]);
 
-  // Comment handlers hook
   const commentHandlers = useViewerComments({
-    fileId,
-    selectedVersionId,
-    topLevelComments,
-    ghostRaw,
-    activeThreadId,
-    dispatch,
-    createComment,
-    patchComment,
-    deleteComment,
-    addTag,
-    tagList,
-    selectedTagIds,
-    setSelectedTagIds,
+    fileId, selectedVersionId, topLevelComments, ghostRaw, activeThreadId, dispatch,
+    createComment, patchComment, deleteComment, addTag, tagList, selectedTagIds, setSelectedTagIds,
   });
 
-  // DnD hook
+  const pendingContextMenuFractionRef = useRef<{ fX: number; fY: number } | null>(null);
+  const contextMenuTriggerRef = useRef<HTMLSpanElement>(null);
+
   const dnd = useViewerDnd({
-    iframeRef,
-    topLevelComments,
-    patchComment,
-    processAnchorSelected,
+    iframeRef, topLevelComments, patchComment, processAnchorSelected,
+    pendingContextMenuFractionRef, contextMenuTriggerRef,
   });
+
+  // Context menu from iframe
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type !== "CONTEXT_MENU") return;
+      const iframeEl = iframeRef.current;
+      if (!iframeEl || isFullscreen) return;
+      const rect = iframeEl.getBoundingClientRect();
+      const x = rect.left + (e.data.fractionX as number) * rect.width;
+      const y = rect.top + (e.data.fractionY as number) * rect.height;
+      pendingContextMenuFractionRef.current = {
+        fX: e.data.fractionX as number,
+        fY: e.data.fractionY as number,
+      };
+      contextMenuTriggerRef.current?.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true, cancelable: true, view: window,
+          clientX: Math.round(x), clientY: Math.round(y),
+        })
+      );
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen]);
 
   function onSelectThread(commentId: number) {
     dispatch({ type: "SET_GHOST", ghost: null });
@@ -1121,22 +1370,210 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     else dispatch({ type: "SET_COMMENTS_OPEN", open: true });
   }
 
-  function copyShare() {
-    void navigator.clipboard.writeText(window.location.href);
-    toast.success("Link copied");
-  }
-
   function toggleTag(id: number) {
     setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
+  const showThreadPopover = Boolean(activeThreadId);
+  const showComposePopover = Boolean(iframe.ghostPin) && !showThreadPopover;
+
+  const currentPopoverState = useMemo(() => {
+    if (!activeThreadId) return null;
+    const activePin = iframe.pins.find((p) => p.commentId === activeThreadId);
+    const activeComment = topLevelComments.find((c) => c.id === activeThreadId);
+    if (!activePin || !activeComment) return null;
+    const activeAnchor = activeComment.anchor as Anchor | undefined;
+    const relatedComments = topLevelComments.filter((c) => {
+      if (c.id === activeComment.id) return false;
+      const ca = c.anchor as Anchor | undefined;
+      if (!ca || !activeAnchor) return false;
+      if (activeAnchor.dataComment && ca.dataComment) return activeAnchor.dataComment === ca.dataComment;
+      if (activeAnchor.selector && ca.selector) return activeAnchor.selector === ca.selector;
+      return false;
+    });
+    return { threadId: activeComment.id, pin: activePin, comment: activeComment, relatedComments };
+  }, [activeThreadId, iframe.pins, topLevelComments]);
+
+  if (currentPopoverState && currentPopoverState.threadId !== lastPopoverState?.threadId) {
+    setLastPopoverState(currentPopoverState);
+  }
+  const popoverDisplay = currentPopoverState ?? lastPopoverState;
+
+  return {
+    iframeRef, overlayRef, viewerRootRef, isMobile,
+    user, project, files, filesLoading,
+    mentionMembers, tagOptions, fileVersionsList,
+    fileId, setFileId,
+    dispatch, vs,
+    html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
+    anchorResolvedMap, isFullscreen, canManageVersions,
+    topLevelComments, comments, commentsLoading, commentAnchors, anchorResolutionItems,
+    handleAnchorResolution, iframe, commentHandlers, dnd,
+    pendingGhostAnchorRef, pendingContextMenuFractionRef, contextMenuTriggerRef,
+    selectedTagIds, onSelectThread, toggleTag,
+    showThreadPopover, showComposePopover, popoverDisplay,
+  };
+}
+
+/* ──────────────── Extracted sub-components ──────────────── */
+
+function MobileFileSelector({
+  files,
+  fileId,
+  onSetFileId,
+}: {
+  files: { id: number; path: string }[];
+  fileId: string | null;
+  onSetFileId: (id: string) => void;
+}) {
+  if (files.length <= 1) return null;
+  return (
+    <div className="absolute left-0 right-0 top-14 z-30 border-b border-border bg-background/90 px-3 py-2 backdrop-blur-sm md:hidden">
+      <label htmlFor="viewer-file-select" className="mb-1 block text-xs text-muted-foreground">
+        File
+      </label>
+      <select
+        id="viewer-file-select"
+        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        value={fileId ?? ""}
+        onChange={(e) => onSetFileId(e.target.value)}
+      >
+        {files.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.path}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function FloatingReopenButton({
+  commentsOpen,
+  isMobile,
+  isFullscreen,
+  unresolvedCount,
+  dispatch,
+}: {
+  commentsOpen: boolean;
+  isMobile: boolean;
+  isFullscreen: boolean;
+  unresolvedCount: number;
+  dispatch: React.Dispatch<ViewerAction>;
+}) {
+  if (commentsOpen || isMobile || isFullscreen) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => dispatch({ type: "SET_COMMENTS_OPEN", open: true })}
+          className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-2 shadow-lg backdrop-blur-sm transition-all hover:bg-background hover:shadow-xl"
+        >
+          <MessageCircle className="size-4 text-muted-foreground" />
+          {unresolvedCount > 0 ? (
+            <span className="text-[12px] font-medium text-foreground">
+              {unresolvedCount}
+            </span>
+          ) : null}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left">Open comments</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ViewerContextMenu({
+  contextMenuTriggerRef,
+  pendingContextMenuFractionRef,
+  iframeRef,
+}: {
+  contextMenuTriggerRef: React.RefObject<HTMLSpanElement | null>;
+  pendingContextMenuFractionRef: React.RefObject<{ fX: number; fY: number } | null>;
+  iframeRef: React.RefObject<HTMLIFrameElement | null>;
+}) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <span
+          ref={contextMenuTriggerRef}
+          className="pointer-events-none fixed"
+          style={{ left: 0, top: 0, width: 0, height: 0 }}
+          aria-hidden
+        />
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          onClick={() => {
+            const f = pendingContextMenuFractionRef.current;
+            if (!f) return;
+            iframeRef.current?.contentWindow?.postMessage({
+              type: "PICK_ELEMENT_AT",
+              fractionX: f.fX,
+              fractionY: f.fY,
+            }, "*");
+          }}
+        >
+          <MessageSquarePlus className="mr-2 size-4" />
+          Add Comment
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+function ViewerDragOverlay({ draggedComment }: { draggedComment: Comment | null }) {
+  return (
+    <DragOverlay dropAnimation={null}>
+      {draggedComment ? (
+        <div className="w-56 rounded-xl border border-primary/30 bg-background px-4 py-3 shadow-xl opacity-90">
+          <p className="truncate text-[13px] text-foreground">{draggedComment.body}</p>
+        </div>
+      ) : null}
+    </DragOverlay>
+  );
+}
+
+function ViewerSidebar({
+  isFullscreen,
+  isMobile,
+  sidebarProps,
+}: {
+  isFullscreen: boolean;
+  isMobile: boolean;
+  sidebarProps: React.ComponentProps<typeof CommentsSidebar>;
+}) {
+  if (isFullscreen || isMobile) return null;
+  return (
+    <Sidebar side="right" collapsible="offcanvas" className="top-0 border-l border-border">
+      <SidebarContent>
+        <CommentsSidebar {...sidebarProps} />
+      </SidebarContent>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
+
+export function ProjectViewer({ projectId }: { projectId: string }) {
+  const {
+    iframeRef, overlayRef, viewerRootRef, isMobile,
+    user, project, files, filesLoading,
+    mentionMembers, tagOptions, fileVersionsList,
+    fileId, setFileId,
+    dispatch,
+    html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
+    anchorResolvedMap, isFullscreen, canManageVersions,
+    topLevelComments, comments, commentsLoading, commentAnchors, anchorResolutionItems,
+    handleAnchorResolution, iframe, commentHandlers, dnd,
+    pendingGhostAnchorRef, pendingContextMenuFractionRef, contextMenuTriggerRef,
+    selectedTagIds, onSelectThread, toggleTag,
+    showThreadPopover, showComposePopover, popoverDisplay,
+  } = useProjectViewerData(projectId);
+
   async function toggleFullscreen() {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await viewerRootRef.current?.requestFullscreen();
-    } catch {
-      toast.error("Fullscreen is not available");
-    }
+    const el = document.fullscreenElement;
+    const target = el ? document.exitFullscreen() : viewerRootRef.current?.requestFullscreen();
+    await target?.catch(() => { toast.error("Fullscreen is not available"); });
   }
 
   const sidebarProps = {
@@ -1160,9 +1597,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     onDeleteComment: commentHandlers.onDelete,
   };
 
-  const showThreadPopover = Boolean(activeThreadId);
-  const showComposePopover = Boolean(iframe.ghostPin) && !showThreadPopover;
-
   return (
     <DndContext sensors={dnd.dndSensors} onDragStart={dnd.onDragStart} onDragEnd={dnd.onDragEnd}>
     <TooltipProvider delayDuration={300}>
@@ -1177,158 +1611,34 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             ref={viewerRootRef}
             className="relative flex min-h-0 flex-1 canvas-grid-soft"
           >
-            {/* ── Header bar ── */}
-            {!isFullscreen ? (
-              <div className="absolute left-0 right-0 top-0 z-40 flex flex-col border-b border-border/60 bg-background/80 backdrop-blur-xl">
-                {/* Row 1: back + breadcrumb + actions */}
-                <div className="flex items-center gap-1.5 px-3 py-1.5">
-                  {/* Back */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-foreground" asChild>
-                        <Link to="/" aria-label="Back to projects">
-                          <ArrowLeft className="size-3.5" />
-                        </Link>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Back to projects</TooltipContent>
-                  </Tooltip>
+            <ViewerHeaderBar
+              projectName={project?.name ?? "Project"}
+              files={files}
+              fileId={fileId}
+              projectId={projectId}
+              selectedVersionId={selectedVersionId}
+              forceOpenVersionSelector={forceOpenVersionSelector}
+              canManageVersions={canManageVersions}
+              isFullscreen={isFullscreen}
+              isMobile={isMobile}
+              mobileSheet={mobileSheet}
+              sidebarProps={sidebarProps}
+              dispatch={dispatch}
+              onSetFileId={(id) => void setFileId(id)}
+              onToggleFullscreen={() => void toggleFullscreen()}
+            />
 
-                  <div className="mx-0.5 h-4 w-px bg-border/60" />
-
-                  {/* Breadcrumb + version */}
-                  <div className="flex min-w-0 items-center gap-1 text-[13px]">
-                    <span className="truncate text-muted-foreground">{project?.name ?? "Project"}</span>
-                    {files?.find((f) => String(f.id) === fileId) ? (
-                      <>
-                        <span className="text-muted-foreground/30 mx-0.5">/</span>
-                        <span className="truncate font-medium text-foreground">
-                          {files.find((f) => String(f.id) === fileId)?.path.split("/").pop() ?? ""}
-                        </span>
-                      </>
-                    ) : null}
-                    {fileId ? (
-                      <VersionSelector
-                        projectId={projectId}
-                        fileId={fileId}
-                        selectedVersionId={selectedVersionId}
-                        onSelectVersion={(id) => dispatch({ type: "SET_VERSION", id })}
-                        canManage={canManageVersions}
-                        forceOpen={forceOpenVersionSelector}
-                        onForceOpenHandled={() => dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: false })}
-                      />
-                    ) : null}
-                  </div>
-
-                  <div className="flex-1" />
-
-                  {/* Actions */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground" onClick={() => void toggleFullscreen()}>
-                        {isFullscreen ? <Minimize className="size-3.5" /> : <Expand className="size-3.5" />}
-                        <span className="sr-only">Toggle fullscreen</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Fullscreen</TooltipContent>
-                  </Tooltip>
-                  {isMobile ? (
-                    <Sheet open={mobileSheet} onOpenChange={(open) => dispatch({ type: "SET_MOBILE_SHEET", open })}>
-                      <SheetTrigger asChild>
-                        <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-foreground lg:hidden">
-                          <MessageCircle className="size-4" />
-                        </Button>
-                      </SheetTrigger>
-                      <SheetContent side="bottom" className="h-[85dvh] p-0">
-                        <CommentsSidebar
-                          {...sidebarProps}
-                          onClose={() => dispatch({ type: "SET_MOBILE_SHEET", open: false })}
-                        />
-                      </SheetContent>
-                    </Sheet>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="hidden size-7 text-muted-foreground hover:text-foreground lg:inline-flex"
-                          onClick={() => dispatch({ type: "TOGGLE_COMMENTS_OPEN" })}
-                          aria-label="Toggle comments"
-                        >
-                          <MessageCircle className="size-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Toggle comments</TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-
-                {/* Row 2: file tabs — always shown */}
-                <div className="flex items-center gap-1 overflow-x-auto border-t border-border/40 px-3 py-2 scrollbar-none">
-                  {(files ?? []).map((f) => {
-                    const active = String(f.id) === fileId;
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => void setFileId(String(f.id))}
-                        className={cn(
-                          "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
-                          active
-                            ? "bg-foreground/8 text-foreground"
-                            : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-                        )}
-                      >
-                        {f.path.split("/").pop() ?? f.path}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+            {files ? (
+              <MobileFileSelector files={files} fileId={fileId} onSetFileId={(id) => void setFileId(id)} />
             ) : null}
 
-            {/* Mobile file selector */}
-            {files && files.length > 1 ? (
-              <div className="absolute left-0 right-0 top-14 z-30 border-b border-border bg-background/90 px-3 py-2 backdrop-blur-sm md:hidden">
-                <label htmlFor="viewer-file-select" className="mb-1 block text-xs text-muted-foreground">
-                  File
-                </label>
-                <select
-                  id="viewer-file-select"
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                  value={fileId ?? ""}
-                  onChange={(e) => void setFileId(e.target.value)}
-                >
-                  {files.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.path}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-
-            {/* Floating sidebar reopen button */}
-            {!commentsOpen && !isMobile && !isFullscreen ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: "SET_COMMENTS_OPEN", open: true })}
-                    className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-2 shadow-lg backdrop-blur-sm transition-all hover:bg-background hover:shadow-xl"
-                  >
-                    <MessageCircle className="size-4 text-muted-foreground" />
-                    {topLevelComments.filter((c) => !c.resolved).length > 0 ? (
-                      <span className="text-[12px] font-medium text-foreground">
-                        {topLevelComments.filter((c) => !c.resolved).length}
-                      </span>
-                    ) : null}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left">Open comments</TooltipContent>
-              </Tooltip>
-            ) : null}
+            <FloatingReopenButton
+              commentsOpen={commentsOpen}
+              isMobile={isMobile}
+              isFullscreen={isFullscreen}
+              unresolvedCount={topLevelComments.filter((c) => !c.resolved).length}
+              dispatch={dispatch}
+            />
 
             <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col pt-24 px-3 pb-3 md:pt-24 md:px-4 md:pb-4">
               {!filesLoading && !files?.length ? (
@@ -1357,131 +1667,26 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
                   {/* Pin overlay */}
                   {!isFullscreen && !htmlLoading && !htmlError && html ? (
-                    <div
-                      ref={overlayRef}
-                      className="pointer-events-none absolute inset-0 overflow-hidden"
-                    >
-                      {/* Ghost pin for new comment */}
-                      {showComposePopover && iframe.ghostPin ? (
-                        <>
-                          <GhostPin x={iframe.ghostPin.x} y={iframe.ghostPin.y} />
-                          <Popover open={showComposePopover}>
-                            <PopoverAnchor asChild>
-                              <div
-                                className="pointer-events-none absolute z-40"
-                                style={{ left: iframe.ghostPin.x, top: iframe.ghostPin.y, width: 1, height: 1 }}
-                              />
-                            </PopoverAnchor>
-                            <PopoverContent
-                              side="right"
-                              align="start"
-                              sideOffset={16}
-                              collisionPadding={12}
-                              className="w-auto border-0 bg-transparent p-0 shadow-none"
-                              onOpenAutoFocus={(e) => e.preventDefault()}
-                            >
-                              <NewCommentComposePopover
-                                currentUser={user}
-                                tagOptions={tagOptions}
-                                selectedTagIds={selectedTagIds}
-                                onToggleTag={toggleTag}
-                                onSubmit={commentHandlers.onSubmitNewComment}
-                                onCancel={() => dispatch({ type: "SET_GHOST", ghost: null })}
-                                members={mentionMembers}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </>
-                      ) : null}
-
-                      {/* Comment pins */}
-                      {iframe.pins.map((pin, pinIndex) => {
-                        const comment = comments?.find((c) => c.id === pin.commentId);
-                        if (!comment) return null;
-                        const replyCount = comment.replies?.length ?? 0;
-
-                        return (
-                          <CommentPin
-                            key={pin.commentId}
-                            comment={comment}
-                            x={pin.x}
-                            y={pin.y}
-                            isActive={activeThreadId === pin.commentId}
-                            isOrphaned={pin.orphaned}
-                            replyCount={replyCount}
-                            index={pinIndex}
-                            onClick={() => {
-                              dispatch({ type: "SET_GHOST", ghost: null });
-                              pendingGhostAnchorRef.current = null;
-                              dispatch({ type: "SET_ACTIVE_THREAD", id: activeThreadId === pin.commentId ? null : pin.commentId });
-                              iframe.sendHighlight(comment.anchor as Anchor);
-                            }}
-                          />
-                        );
-                      })}
-
-                      {/* Active thread popover */}
-                      {(() => {
-                        if (activeThreadId) {
-                          const activePin = iframe.pins.find((p) => p.commentId === activeThreadId);
-                          const activeComment = topLevelComments.find((c) => c.id === activeThreadId);
-                          if (activePin && activeComment) {
-                            const activeAnchor = activeComment.anchor as Anchor | undefined;
-                            const relatedComments = topLevelComments.filter((c) => {
-                              if (c.id === activeComment.id) return false;
-                              const ca = c.anchor as Anchor | undefined;
-                              if (!ca || !activeAnchor) return false;
-                              if (activeAnchor.dataComment && ca.dataComment) return activeAnchor.dataComment === ca.dataComment;
-                              if (activeAnchor.selector && ca.selector) return activeAnchor.selector === ca.selector;
-                              return false;
-                            });
-                            lastPopoverStateRef.current = { threadId: activeComment.id, pin: activePin, comment: activeComment, relatedComments };
-                          }
-                        }
-                        const display = lastPopoverStateRef.current;
-                        if (!display) return null;
-                        return (
-                          <Popover
-                            key={display.threadId}
-                            open={showThreadPopover}
-                            onOpenChange={(open) => {
-                              if (!open) dispatch({ type: "SET_ACTIVE_THREAD", id: null });
-                            }}
-                          >
-                            <PopoverAnchor asChild>
-                              <div
-                                className="pointer-events-none absolute z-50"
-                                style={{ left: display.pin.x, top: display.pin.y, width: 1, height: 1 }}
-                              />
-                            </PopoverAnchor>
-                            <PopoverContent
-                              side="right"
-                              align="start"
-                              sideOffset={16}
-                              collisionPadding={12}
-                              className="w-auto border-0 bg-transparent p-0 shadow-none"
-                              onOpenAutoFocus={(e) => e.preventDefault()}
-                            >
-                              <InlineThreadPopover
-                                comment={display.comment}
-                                relatedComments={display.relatedComments}
-                                currentUser={user}
-                                canComment={true}
-                                members={mentionMembers}
-                                onClose={() => dispatch({ type: "SET_ACTIVE_THREAD", id: null })}
-                                onResolve={commentHandlers.onResolve}
-                                onDelete={commentHandlers.onDelete}
-                                onReply={commentHandlers.onReply}
-                                onNewComment={commentHandlers.onNewCommentFromThread}
-                                onEditMessage={commentHandlers.onEditComment}
-                                onUnlink={canManageVersions ? commentHandlers.onUnlink : undefined}
-                                isOrphaned={display.pin.orphaned}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        );
-                      })()}
-                    </div>
+                    <PinOverlay
+                      overlayRef={overlayRef}
+                      showComposePopover={showComposePopover}
+                      ghostPin={iframe.ghostPin}
+                      pins={iframe.pins}
+                      comments={comments}
+                      activeThreadId={activeThreadId}
+                      showThreadPopover={showThreadPopover}
+                      popoverDisplay={popoverDisplay}
+                      user={user}
+                      tagOptions={tagOptions}
+                      selectedTagIds={selectedTagIds}
+                      mentionMembers={mentionMembers}
+                      canManageVersions={canManageVersions}
+                      commentHandlers={commentHandlers}
+                      pendingGhostAnchorRef={pendingGhostAnchorRef}
+                      sendHighlight={iframe.sendHighlight}
+                      dispatch={dispatch}
+                      onToggleTag={toggleTag}
+                    />
                   ) : null}
                 </div>
               )}
@@ -1489,49 +1694,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           </div>
         </SidebarInset>
 
-        {/* Right sidebar — desktop only */}
-        {!isFullscreen && !isMobile ? (
-          <Sidebar side="right" collapsible="offcanvas" className="top-0 border-l border-border">
-            <SidebarContent>
-              <CommentsSidebar {...sidebarProps} />
-            </SidebarContent>
-            <SidebarRail />
-          </Sidebar>
-        ) : null}
+        <ViewerSidebar isFullscreen={isFullscreen} isMobile={isMobile} sidebarProps={sidebarProps} />
       </SidebarProvider>
-      <DragOverlay dropAnimation={null}>
-        {dnd.draggedComment ? (
-          <div className="w-56 rounded-xl border border-primary/30 bg-background px-4 py-3 shadow-xl opacity-90">
-            <p className="truncate text-[13px] text-foreground">{dnd.draggedComment.body}</p>
-          </div>
-        ) : null}
-      </DragOverlay>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <span
-            ref={dnd.contextMenuTriggerRef}
-            className="pointer-events-none fixed"
-            style={{ left: 0, top: 0, width: 0, height: 0 }}
-            aria-hidden
-          />
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem
-            onClick={() => {
-              const f = dnd.pendingContextMenuFractionRef.current;
-              if (!f) return;
-              iframeRef.current?.contentWindow?.postMessage({
-                type: "PICK_ELEMENT_AT",
-                fractionX: f.fX,
-                fractionY: f.fY,
-              }, "*");
-            }}
-          >
-            <MessageSquarePlus className="mr-2 size-4" />
-            Add Comment
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+      <ViewerDragOverlay draggedComment={dnd.draggedComment} />
+      <ViewerContextMenu
+        contextMenuTriggerRef={contextMenuTriggerRef}
+        pendingContextMenuFractionRef={pendingContextMenuFractionRef}
+        iframeRef={iframeRef}
+      />
     </TooltipProvider>
     </DndContext>
   );

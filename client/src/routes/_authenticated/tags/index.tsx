@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useReducer } from "react";
 import { Pencil, Plus, Tags as TagsIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,30 +46,70 @@ function TagsPage() {
   );
 }
 
+type TagDialogState = {
+  dialogOpen: boolean;
+  editing: Tag | null;
+  name: string;
+  color: string;
+  deleteTarget: Tag | null;
+};
+
+type TagDialogAction =
+  | { type: "OPEN_CREATE" }
+  | { type: "OPEN_EDIT"; payload: Tag }
+  | { type: "CLOSE_DIALOG" }
+  | { type: "SET_NAME"; payload: string }
+  | { type: "SET_COLOR"; payload: string }
+  | { type: "SET_DELETE_TARGET"; payload: Tag | null };
+
+const initialTagDialog: TagDialogState = {
+  dialogOpen: false,
+  editing: null,
+  name: "",
+  color: PRESETS[0],
+  deleteTarget: null,
+};
+
+function tagDialogReducer(state: TagDialogState, action: TagDialogAction): TagDialogState {
+  switch (action.type) {
+    case "OPEN_CREATE":
+      return { ...state, dialogOpen: true, editing: null, name: "", color: PRESETS[0] };
+    case "OPEN_EDIT":
+      return {
+        ...state,
+        dialogOpen: true,
+        editing: action.payload,
+        name: action.payload.name,
+        color: action.payload.color.startsWith("#") ? action.payload.color : PRESETS[0],
+      };
+    case "CLOSE_DIALOG":
+      return { ...state, dialogOpen: false };
+    case "SET_NAME":
+      return { ...state, name: action.payload };
+    case "SET_COLOR":
+      return { ...state, color: action.payload };
+    case "SET_DELETE_TARGET":
+      return { ...state, deleteTarget: action.payload };
+    default:
+      return state;
+  }
+}
+
 function TagsContent() {
   const { data, isPending } = useTags();
   const create = useCreateTag();
   const update = useUpdateTag();
   const remove = useDeleteTag();
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Tag | null>(null);
-  const [name, setName] = useState("");
-  const [color, setColor] = useState(PRESETS[0]);
-  const [deleteTarget, setDeleteTarget] = useState<Tag | null>(null);
+  const [state, dispatch] = useReducer(tagDialogReducer, initialTagDialog);
+  const { dialogOpen, editing, name, color, deleteTarget } = state;
 
   function openCreate() {
-    setEditing(null);
-    setName("");
-    setColor(PRESETS[0]);
-    setDialogOpen(true);
+    dispatch({ type: "OPEN_CREATE" });
   }
 
   function openEdit(t: Tag) {
-    setEditing(t);
-    setName(t.name);
-    setColor(t.color.startsWith("#") ? t.color : PRESETS[0]);
-    setDialogOpen(true);
+    dispatch({ type: "OPEN_EDIT", payload: t });
   }
 
   async function save() {
@@ -83,7 +123,7 @@ function TagsContent() {
         await create.mutateAsync({ name: n, color });
         toast.success("Tag created");
       }
-      setDialogOpen(false);
+      dispatch({ type: "CLOSE_DIALOG" });
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Failed");
     }
@@ -94,7 +134,7 @@ function TagsContent() {
     try {
       await remove.mutateAsync(deleteTarget.id);
       toast.success("Tag deleted");
-      setDeleteTarget(null);
+      dispatch({ type: "SET_DELETE_TARGET", payload: null });
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Delete failed");
     }
@@ -162,7 +202,7 @@ function TagsContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDeleteTarget(t)}
+                  onClick={() => dispatch({ type: "SET_DELETE_TARGET", payload: t })}
                   className="inline-flex size-6 items-center justify-center rounded-md text-text-tertiary hover:bg-destructive/10 hover:text-destructive"
                   aria-label="Delete tag"
                 >
@@ -182,7 +222,7 @@ function TagsContent() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(o) => !o && dispatch({ type: "CLOSE_DIALOG" })}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit tag" : "New tag"}</DialogTitle>
@@ -196,7 +236,7 @@ function TagsContent() {
               <Input
                 id="tag-name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => dispatch({ type: "SET_NAME", payload: e.target.value })}
                 placeholder="e.g. bug, design, copy"
                 onKeyDown={(e) => e.key === "Enter" && void save()}
               />
@@ -213,7 +253,7 @@ function TagsContent() {
                       color === c ? "border-foreground scale-110" : "border-transparent",
                     )}
                     style={{ backgroundColor: c }}
-                    onClick={() => setColor(c)}
+                    onClick={() => dispatch({ type: "SET_COLOR", payload: c })}
                     aria-label={`Color ${c}`}
                   />
                 ))}
@@ -227,7 +267,7 @@ function TagsContent() {
             </Field>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" size="sm" onClick={() => dispatch({ type: "CLOSE_DIALOG" })}>
               Cancel
             </Button>
             <Button
@@ -242,7 +282,7 @@ function TagsContent() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && dispatch({ type: "SET_DELETE_TARGET", payload: null })}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete &ldquo;{deleteTarget?.name}&rdquo;?</AlertDialogTitle>

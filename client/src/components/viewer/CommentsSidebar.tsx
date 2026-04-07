@@ -267,6 +267,130 @@ function CommentThread({
   );
 }
 
+function SidebarFilterBar({
+  filter,
+  onFilterChange,
+  filters,
+  tagOptions,
+  selectedTagIds,
+  onToggleTag,
+}: {
+  filter: "all" | "open" | "resolved";
+  onFilterChange: (f: "all" | "open" | "resolved") => void;
+  filters: { key: "all" | "open" | "resolved"; label: string }[];
+  tagOptions: Tag[];
+  selectedTagIds: Set<number>;
+  onToggleTag: (id: number) => void;
+}) {
+  return (
+    <div className="bg-bg-secondary px-3 pt-2.5 pb-2.5 space-y-2" style={{ borderBottom: "1px solid var(--border)" }}>
+      <div className="flex rounded-lg bg-muted/80 p-0.5">
+        {filters.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => onFilterChange(f.key)}
+            className={cn(
+              "flex-1 rounded-md px-2.5 py-1 text-[12px] font-medium transition-all",
+              filter === f.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {tagOptions.length > 0 ? (
+        <div className="space-y-1.5">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-6 items-center gap-1 rounded border border-border bg-background px-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <TagIcon className="size-3 shrink-0" />
+                Tags
+                {selectedTagIds.size > 0 ? (
+                  <span className="text-[11px] font-medium text-foreground">({selectedTagIds.size})</span>
+                ) : (
+                  <ChevronDown className="size-3 opacity-40" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-40 p-1">
+              {tagOptions.map((tag) => {
+                const selected = selectedTagIds.has(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => onToggleTag(tag.id)}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-[12px] text-foreground hover:bg-muted/70 transition-colors"
+                  >
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="flex-1 text-left">{tag.name}</span>
+                    {selected ? <Check className="size-3 text-foreground/60" /> : null}
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
+          {selectedTagIds.size > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {tagOptions.filter((t) => selectedTagIds.has(t.id)).map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
+                  style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
+                >
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                  {tag.name}
+                  <button
+                    type="button"
+                    onClick={() => onToggleTag(tag.id)}
+                    className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <X className="size-2.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ThreadListSkeleton() {
+  return (
+    <div className="space-y-1.5">
+      {["skeleton-1", "skeleton-2", "skeleton-3"].map((id) => (
+        <div
+          key={id}
+          className="flex gap-2.5 rounded-lg bg-background px-3 py-3 shadow-[var(--shadow-card)]"
+        >
+          <Skeleton className="size-6 shrink-0 rounded-full" />
+          <div className="flex-1 space-y-2 pt-1">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-3/4" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CommentsSidebar({
   comments,
   currentUser,
@@ -373,8 +497,8 @@ export function CommentsSidebar({
   ];
 
   function renderThreadList(list: Comment[], startIndex: number, opts: { isOrphaned: boolean; isUnlinked?: boolean }) {
-    return list.map((c) => {
-      const idx = startIndex++;
+    return list.map((c, i) => {
+      const idx = startIndex + i;
       return (
         <CommentThread
           key={c.id}
@@ -439,111 +563,19 @@ export function CommentsSidebar({
       </div>
 
       {/* ── Segmented filter + tag filter ── */}
-      <div className="bg-bg-secondary px-3 pt-2.5 pb-2.5 space-y-2" style={{ borderBottom: "1px solid var(--border)" }}>
-        <div className="flex rounded-lg bg-muted/80 p-0.5">
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "flex-1 rounded-md px-2.5 py-1 text-[12px] font-medium transition-all",
-                filter === f.key
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-      {tagOptions.length > 0 ? (
-        <div className="space-y-1.5">
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex h-6 items-center gap-1 rounded border border-border bg-background px-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <TagIcon className="size-3 shrink-0" />
-                Tags
-                {selectedTagIds.size > 0 ? (
-                  <span className="text-[11px] font-medium text-foreground">({selectedTagIds.size})</span>
-                ) : (
-                  <ChevronDown className="size-3 opacity-40" />
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-40 p-1">
-              {tagOptions.map((tag) => {
-                const selected = selectedTagIds.has(tag.id);
-                return (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => toggleTag(tag.id)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-[12px] text-foreground hover:bg-muted/70 transition-colors"
-                  >
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: tag.color }}
-                    />
-                    <span className="flex-1 text-left">{tag.name}</span>
-                    {selected ? <Check className="size-3 text-foreground/60" /> : null}
-                  </button>
-                );
-              })}
-            </PopoverContent>
-          </Popover>
-
-          {/* Selected tag chips */}
-          {selectedTagIds.size > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {tagOptions.filter((t) => selectedTagIds.has(t.id)).map((tag) => (
-                <span
-                  key={tag.id}
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
-                  style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
-                >
-                  <span
-                    className="size-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag.color }}
-                  />
-                  {tag.name}
-                  <button
-                    type="button"
-                    onClick={() => toggleTag(tag.id)}
-                    className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
-                  >
-                    <X className="size-2.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      </div>
+      <SidebarFilterBar
+        filter={filter}
+        onFilterChange={setFilter}
+        filters={filters}
+        tagOptions={tagOptions}
+        selectedTagIds={selectedTagIds}
+        onToggleTag={toggleTag}
+      />
 
       {/* ── Thread list ── */}
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto bg-bg-secondary px-3 py-2.5 space-y-1.5" role="list">
         {loading ? (
-          <div className="space-y-1.5">
-            {["skeleton-1", "skeleton-2", "skeleton-3"].map((id) => (
-              <div
-                key={id}
-                className="flex gap-2.5 rounded-lg bg-background px-3 py-3 shadow-[var(--shadow-card)]"
-              >
-                <Skeleton className="size-6 shrink-0 rounded-full" />
-                <div className="flex-1 space-y-2 pt-1">
-                  <Skeleton className="h-3 w-28" />
-                  <Skeleton className="h-3 w-full" />
-                  <Skeleton className="h-3 w-3/4" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <ThreadListSkeleton />
         ) : filteredBySearch.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <div className="flex size-12 items-center justify-center rounded-full bg-muted/60">

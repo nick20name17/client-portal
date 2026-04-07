@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useReducer, useState } from "react";
 import { format } from "date-fns";
 import { Building2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -56,6 +56,44 @@ function CompaniesPage() {
   );
 }
 
+type CompanyDialogState = {
+  dialogOpen: boolean;
+  editing: Company | null;
+  name: string;
+  deleteTarget: Company | null;
+};
+
+type CompanyDialogAction =
+  | { type: "OPEN_CREATE" }
+  | { type: "OPEN_EDIT"; payload: Company }
+  | { type: "CLOSE_DIALOG" }
+  | { type: "SET_NAME"; payload: string }
+  | { type: "SET_DELETE_TARGET"; payload: Company | null };
+
+const initialCompanyDialog: CompanyDialogState = {
+  dialogOpen: false,
+  editing: null,
+  name: "",
+  deleteTarget: null,
+};
+
+function companyDialogReducer(state: CompanyDialogState, action: CompanyDialogAction): CompanyDialogState {
+  switch (action.type) {
+    case "OPEN_CREATE":
+      return { ...state, dialogOpen: true, editing: null, name: "" };
+    case "OPEN_EDIT":
+      return { ...state, dialogOpen: true, editing: action.payload, name: action.payload.name };
+    case "CLOSE_DIALOG":
+      return { ...state, dialogOpen: false };
+    case "SET_NAME":
+      return { ...state, name: action.payload };
+    case "SET_DELETE_TARGET":
+      return { ...state, deleteTarget: action.payload };
+    default:
+      return state;
+  }
+}
+
 function CompaniesContent() {
   const { data, isPending } = useCompanies();
   const create = useCreateCompany();
@@ -63,10 +101,8 @@ function CompaniesContent() {
   const remove = useDeleteCompany();
 
   const [q, setQ] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Company | null>(null);
-  const [name, setName] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [state, dispatch] = useReducer(companyDialogReducer, initialCompanyDialog);
+  const { dialogOpen, editing, name, deleteTarget } = state;
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -76,15 +112,11 @@ function CompaniesContent() {
   }, [data, q]);
 
   function openCreate() {
-    setEditing(null);
-    setName("");
-    setDialogOpen(true);
+    dispatch({ type: "OPEN_CREATE" });
   }
 
   function openEdit(c: Company) {
-    setEditing(c);
-    setName(c.name);
-    setDialogOpen(true);
+    dispatch({ type: "OPEN_EDIT", payload: c });
   }
 
   async function save() {
@@ -98,7 +130,7 @@ function CompaniesContent() {
         await create.mutateAsync({ name: n });
         toast.success("Company created");
       }
-      setDialogOpen(false);
+      dispatch({ type: "CLOSE_DIALOG" });
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Something went wrong");
     }
@@ -109,7 +141,7 @@ function CompaniesContent() {
     try {
       await remove.mutateAsync(deleteTarget.id);
       toast.success("Company deleted");
-      setDeleteTarget(null);
+      dispatch({ type: "SET_DELETE_TARGET", payload: null });
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Delete failed");
     }
@@ -208,7 +240,7 @@ function CompaniesContent() {
                       <Pencil className="size-4" />
                       Edit
                     </DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(c)}>
+                    <DropdownMenuItem variant="destructive" onClick={() => dispatch({ type: "SET_DELETE_TARGET", payload: c })}>
                       <Trash2 className="size-4" />
                       Delete
                     </DropdownMenuItem>
@@ -220,7 +252,7 @@ function CompaniesContent() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(o) => !o && dispatch({ type: "CLOSE_DIALOG" })}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit company" : "New company"}</DialogTitle>
@@ -233,13 +265,13 @@ function CompaniesContent() {
             <Input
               id="company-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => dispatch({ type: "SET_NAME", payload: e.target.value })}
               placeholder="Acme Corp"
               onKeyDown={(e) => e.key === "Enter" && void save()}
             />
           </Field>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" size="sm" onClick={() => dispatch({ type: "CLOSE_DIALOG" })}>
               Cancel
             </Button>
             <Button
@@ -254,7 +286,7 @@ function CompaniesContent() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && dispatch({ type: "SET_DELETE_TARGET", payload: null })}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete &ldquo;{deleteTarget?.name}&rdquo;?</AlertDialogTitle>

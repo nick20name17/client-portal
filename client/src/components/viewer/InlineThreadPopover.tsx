@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { ArrowRight, CheckCircle, CornerDownRight, Link2Off, MessageSquare, Pencil, Reply, RotateCcw, Trash2, X } from "lucide-react";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
@@ -176,6 +176,52 @@ function ThreadMessageItem({
   );
 }
 
+type ThreadPopoverState = {
+  replyText: string;
+  submitting: boolean;
+  resolvePending: boolean;
+  deletePending: boolean;
+  replyingTo: { threadRootId: number; name: string } | null;
+};
+
+type ThreadPopoverAction =
+  | { type: "SET_REPLY_TEXT"; payload: string }
+  | { type: "SET_SUBMITTING"; payload: boolean }
+  | { type: "SET_RESOLVE_PENDING"; payload: boolean }
+  | { type: "SET_DELETE_PENDING"; payload: boolean }
+  | { type: "SET_REPLYING_TO"; payload: ThreadPopoverState["replyingTo"] }
+  | { type: "CANCEL_REPLY" }
+  | { type: "SUBMIT_START"; pendingReplyingTo: ThreadPopoverState["replyingTo"] };
+
+const initialThreadPopover: ThreadPopoverState = {
+  replyText: "",
+  submitting: false,
+  resolvePending: false,
+  deletePending: false,
+  replyingTo: null,
+};
+
+function threadPopoverReducer(state: ThreadPopoverState, action: ThreadPopoverAction): ThreadPopoverState {
+  switch (action.type) {
+    case "SET_REPLY_TEXT":
+      return { ...state, replyText: action.payload };
+    case "SET_SUBMITTING":
+      return { ...state, submitting: action.payload };
+    case "SET_RESOLVE_PENDING":
+      return { ...state, resolvePending: action.payload };
+    case "SET_DELETE_PENDING":
+      return { ...state, deletePending: action.payload };
+    case "SET_REPLYING_TO":
+      return { ...state, replyingTo: action.payload };
+    case "CANCEL_REPLY":
+      return { ...state, replyingTo: null, replyText: "" };
+    case "SUBMIT_START":
+      return { ...state, submitting: true, replyText: "", replyingTo: null };
+    default:
+      return state;
+  }
+}
+
 export function InlineThreadPopover({
   comment,
   relatedComments,
@@ -193,11 +239,8 @@ export function InlineThreadPopover({
 }: InlineThreadPopoverProps) {
   const hasAnchor = Boolean(comment.anchor?.selector || comment.anchor?.dataComment);
   const isUnlinked = !hasAnchor;
-  const [replyText, setReplyText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [resolvePending, setResolvePending] = useState(false);
-  const [deletePending, setDeletePending] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<{ threadRootId: number; name: string } | null>(null);
+  const [state, dispatch] = useReducer(threadPopoverReducer, initialThreadPopover);
+  const { replyText, submitting, resolvePending, deletePending, replyingTo } = state;
   const inputRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -214,26 +257,23 @@ export function InlineThreadPopover({
       threadRoot.author?.name?.trim() ||
       threadRoot.author?.email?.split("@")[0] ||
       "user";
-    setReplyingTo({ threadRootId: threadRoot.id, name });
+    dispatch({ type: "SET_REPLYING_TO", payload: { threadRootId: threadRoot.id, name } });
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   function handleCancelReply() {
-    setReplyingTo(null);
-    setReplyText("");
+    dispatch({ type: "CANCEL_REPLY" });
   }
 
   async function handleSubmit() {
     const t = replyText.trim();
     if (!t) return;
     const pendingReplyingTo = replyingTo;
-    setSubmitting(true);
-    setReplyText("");
-    setReplyingTo(null);
+    dispatch({ type: "SUBMIT_START", pendingReplyingTo });
     const action = pendingReplyingTo
       ? () => onReply(pendingReplyingTo.threadRootId, t)
       : () => onNewComment(comment.id, t);
-    await Promise.resolve(action()).finally(() => setSubmitting(false));
+    await Promise.resolve(action()).finally(() => dispatch({ type: "SET_SUBMITTING", payload: false }));
   }
 
   return (
@@ -263,8 +303,8 @@ export function InlineThreadPopover({
                   className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
                   disabled={deletePending}
                   onClick={() => {
-                    setDeletePending(true);
-                    void Promise.resolve(onDelete(comment.id)).finally(() => setDeletePending(false));
+                    dispatch({ type: "SET_DELETE_PENDING", payload: true });
+                    void Promise.resolve(onDelete(comment.id)).finally(() => dispatch({ type: "SET_DELETE_PENDING", payload: false }));
                   }}
                 >
                   <Trash2 className="size-3.5" />
@@ -296,8 +336,8 @@ export function InlineThreadPopover({
                 className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={() => {
                   const newResolved = !comment.resolved;
-                  setResolvePending(true);
-                  void Promise.resolve(onResolve(comment.id, newResolved)).finally(() => setResolvePending(false));
+                  dispatch({ type: "SET_RESOLVE_PENDING", payload: true });
+                  void Promise.resolve(onResolve(comment.id, newResolved)).finally(() => dispatch({ type: "SET_RESOLVE_PENDING", payload: false }));
                   if (newResolved) onClose();
                 }}
                 disabled={!canResolve(currentUser) || resolvePending}
@@ -401,7 +441,7 @@ export function InlineThreadPopover({
               placeholder={canComment ? (replyingTo ? "Reply…" : "New comment…") : "Switch to Commenting mode"}
               placeholderClassName="pl-2.5 py-1.5 text-[13px]"
               value={replyText}
-              onValueChange={setReplyText}
+              onValueChange={(v) => dispatch({ type: "SET_REPLY_TEXT", payload: v })}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

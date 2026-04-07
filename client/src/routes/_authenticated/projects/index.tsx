@@ -331,6 +331,86 @@ function DeleteProjectDialog({
   );
 }
 
+function ArchivedProjectsList({
+  archivedProjects,
+  showArchived,
+  onToggleArchived,
+  onUnarchive,
+  onDelete,
+}: {
+  archivedProjects: Project[];
+  showArchived: boolean;
+  onToggleArchived: () => void;
+  onUnarchive: (id: number) => void;
+  onDelete: (p: Project) => void;
+}) {
+  if (!archivedProjects.length) return null;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggleArchived}
+        className="flex items-center gap-1.5 text-[13px] font-medium text-text-secondary hover:text-foreground transition-colors"
+      >
+        <ChevronDown className={`size-3.5 transition-transform ${showArchived ? "" : "-rotate-90"}`} />
+        Archived ({archivedProjects.length})
+      </button>
+      {showArchived ? (
+        <div className="mt-3 overflow-hidden rounded-lg ring-1 ring-foreground/10">
+          {archivedProjects.map((p, i) => (
+            <div
+              key={p.id}
+              className={cn(
+                "grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 px-5 py-3 opacity-60 transition-colors hover:opacity-100 hover:bg-bg-hover",
+                i < archivedProjects.length - 1 && "border-b border-border",
+              )}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-medium text-foreground">{p.name}</p>
+                {p.company?.name ? (
+                  <p className="truncate text-[12px] text-text-tertiary">{p.company.name}</p>
+                ) : null}
+              </div>
+              <span className="hidden w-32 truncate text-[13px] text-text-secondary sm:block">
+                {p.company?.name ?? "\u2014"}
+              </span>
+              <span className="hidden w-14 text-right text-[13px] tabular-nums text-text-secondary sm:block">
+                {p._count?.files ?? "\u2014"}
+              </span>
+              <span className="hidden w-20 text-right text-[13px] tabular-nums text-text-secondary sm:block">
+                {p._count?.comments ?? "\u2014"}
+              </span>
+              <div className="w-8 flex justify-end">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm">
+                      <MoreHorizontal className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => onUnarchive(p.id)}>
+                      <ArchiveRestore className="size-4" />
+                      Restore
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => onDelete(p)}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete permanently
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // --- Main component ---
 
 function ProjectsContent() {
@@ -556,68 +636,13 @@ function ProjectsContent() {
       )}
 
       {appRole === "admin" && archivedProjects && archivedProjects.length > 0 ? (
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowArchived((v) => !v)}
-            className="flex items-center gap-1.5 text-[13px] font-medium text-text-secondary hover:text-foreground transition-colors"
-          >
-            <ChevronDown className={`size-3.5 transition-transform ${showArchived ? "" : "-rotate-90"}`} />
-            Archived ({archivedProjects.length})
-          </button>
-          {showArchived ? (
-            <div className="mt-3 overflow-hidden rounded-lg ring-1 ring-foreground/10">
-              {archivedProjects.map((p, i) => (
-                <div
-                  key={p.id}
-                  className={cn(
-                    "grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 px-5 py-3 opacity-60 transition-colors hover:opacity-100 hover:bg-bg-hover",
-                    i < archivedProjects.length - 1 && "border-b border-border",
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-medium text-foreground">{p.name}</p>
-                    {p.company?.name ? (
-                      <p className="truncate text-[12px] text-text-tertiary">{p.company.name}</p>
-                    ) : null}
-                  </div>
-                  <span className="hidden w-32 truncate text-[13px] text-text-secondary sm:block">
-                    {p.company?.name ?? "—"}
-                  </span>
-                  <span className="hidden w-14 text-right text-[13px] tabular-nums text-text-secondary sm:block">
-                    {p._count?.files ?? "—"}
-                  </span>
-                  <span className="hidden w-20 text-right text-[13px] tabular-nums text-text-secondary sm:block">
-                    {p._count?.comments ?? "—"}
-                  </span>
-                  <div className="w-8 flex justify-end">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm">
-                          <MoreHorizontal className="size-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => void handleUnarchive(p.id)}>
-                          <ArchiveRestore className="size-4" />
-                          Restore
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => dispatch({ type: "SET_DELETE_TARGET", payload: p })}
-                        >
-                          <Trash2 className="size-4" />
-                          Delete permanently
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <ArchivedProjectsList
+          archivedProjects={archivedProjects}
+          showArchived={showArchived}
+          onToggleArchived={() => setShowArchived((v) => !v)}
+          onUnarchive={(id) => void handleUnarchive(id)}
+          onDelete={(p) => dispatch({ type: "SET_DELETE_TARGET", payload: p })}
+        />
       ) : null}
 
       <ProjectFormDialog
