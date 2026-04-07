@@ -362,6 +362,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     [topLevelComments, isFullscreen],
   );
 
+  // Stable refs so scroll/mutation listeners always call the latest version
+  // without the listener effect needing to re-run (which detaches/re-attaches listeners).
+  const requestAnchorPositionsRef = useRef(requestAnchorPositions);
+  useEffect(() => {
+    requestAnchorPositionsRef.current = requestAnchorPositions;
+  }, [requestAnchorPositions]);
+  const anchorResolutionItemsRef = useRef(anchorResolutionItems);
+  useEffect(() => {
+    anchorResolutionItemsRef.current = anchorResolutionItems;
+  }, [anchorResolutionItems]);
+
   // Listen for ANCHOR_POSITIONS response — store raw iframe coords, convert at render time
   useEffect(() => {
     function onMsg(e: MessageEvent) {
@@ -406,8 +417,57 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  // Re-request positions when comments change or frame reloads
+  // Detach function for iframe scroll/mutation listeners — stored in a ref
+  // so handleFrameReady (which fires reliably on every iframe load) can
+  // teardown the old listeners and attach fresh ones to the new document.
+  const iframeListenersDetachRef = useRef<(() => void) | undefined>(undefined);
+
   const handleFrameReady = useCallback(() => {
+    // Teardown old listeners (previous document)
+    iframeListenersDetachRef.current?.();
+    iframeListenersDetachRef.current = undefined;
+
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+    if (!doc || !win) return;
+
+    // Attach scroll + resize + mutation listeners to the new document
+    const onScrollOrResize = () => {
+      if (isSpaNavigatingRef.current || (window as any).__ebmsSpaNav) return;
+      requestAnchorPositionsRef.current({ flushSync: true });
+    };
+    doc.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true });
+    win.addEventListener("resize", onScrollOrResize);
+
+    let mutationRaf = 0;
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(mutationRaf);
+      mutationRaf = requestAnimationFrame(() => {
+        if (isSpaNavigatingRef.current) return;
+        requestAnchorPositionsRef.current({ flushSync: true });
+        const items = anchorResolutionItemsRef.current;
+        if (items.length) {
+          const resolved: Record<string, boolean> = {};
+          for (const item of items) {
+            resolved[item.id] = !!resolveAnchorInDocument(doc, item.anchor);
+          }
+          setAnchorResolvedMap(resolved);
+        }
+      });
+    });
+    if (doc.body) {
+      observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
+    }
+
+    iframeListenersDetachRef.current = () => {
+      doc.removeEventListener("scroll", onScrollOrResize, { capture: true });
+      win.removeEventListener("resize", onScrollOrResize);
+      cancelAnimationFrame(mutationRaf);
+      observer.disconnect();
+    };
+
     requestAnchorPositions();
   }, [requestAnchorPositions]);
 
@@ -468,68 +528,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return () => window.cancelAnimationFrame(raf);
   }, [commentsOpen, isFullscreen]);
 
-  // Re-measure when the iframe document scrolls — sync measure + flushSync keeps pins aligned with content in the same frame.
-  // Also observe DOM mutations (SPA navigation may swap content without triggering URL changes).
+  // Cleanup iframe listeners on unmount or fullscreen
   useEffect(() => {
-    if (isFullscreen) return;
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
-    const onScrollOrResize = () => {
-      if (isSpaNavigatingRef.current || (window as any).__ebmsSpaNav) return;
-      requestAnchorPositions({ flushSync: true });
-    };
-
-    const attach = () => {
-      const doc = iframe.contentDocument;
-      const win = iframe.contentWindow;
-      if (!doc || !win) return;
-      doc.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true });
-      win.addEventListener("resize", onScrollOrResize);
-
-      // Watch for DOM mutations that may show/hide anchor elements (SPA page swaps).
-      let mutationRaf = 0;
-      const observer = new MutationObserver(() => {
-        cancelAnimationFrame(mutationRaf);
-        mutationRaf = requestAnimationFrame(() => {
-          if (isSpaNavigatingRef.current) return;
-          requestAnchorPositions({ flushSync: true });
-          // Re-resolve anchor existence for sidebar
-          if (anchorResolutionItems.length) {
-            const resolved: Record<string, boolean> = {};
-            for (const item of anchorResolutionItems) {
-              resolved[item.id] = !!resolveAnchorInDocument(doc, item.anchor);
-            }
-            setAnchorResolvedMap(resolved);
-          }
-        });
-      });
-      if (doc.body) {
-        observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
-      }
-
-      return () => {
-        doc.removeEventListener("scroll", onScrollOrResize, { capture: true });
-        win.removeEventListener("resize", onScrollOrResize);
-        cancelAnimationFrame(mutationRaf);
-        observer.disconnect();
-      };
-    };
-
-    let detach: (() => void) | undefined;
-    const onLoad = () => {
-      detach?.();
-      detach = attach();
-    };
-    iframe.addEventListener("load", onLoad);
-    if (iframe.contentDocument?.readyState === "complete") {
-      detach = attach();
+    if (isFullscreen) {
+      iframeListenersDetachRef.current?.();
+      iframeListenersDetachRef.current = undefined;
     }
     return () => {
-      iframe.removeEventListener("load", onLoad);
-      detach?.();
+      iframeListenersDetachRef.current?.();
+      iframeListenersDetachRef.current = undefined;
     };
-  }, [requestAnchorPositions, isFullscreen, html, anchorResolutionItems]);
+  }, [isFullscreen]);
 
   // Convert raw iframe-viewport center coords → overlay-relative px at render time.
   // Reads live rects so positions stay correct after any layout shift (sidebar, resize).
