@@ -411,12 +411,9 @@ export const ProjectService = {
       }
     }
 
-    const res = await fetch(fetchUrl, {
+    const bustUrl = `${fetchUrl}${fetchUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+    const res = await fetch(bustUrl, {
       cache: "no-store",
-      headers: {
-        "cache-control": "no-cache",
-        pragma: "no-cache",
-      },
     });
     if (!res.ok) {
       throw status(502, {

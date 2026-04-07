@@ -1,5 +1,5 @@
 
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { ArrowRight, CheckCircle, CornerDownRight, Link2Off, MessageSquare, Pencil, Reply, RotateCcw, Trash2, X } from "lucide-react";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
