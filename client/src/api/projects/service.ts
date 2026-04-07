@@ -8,6 +8,11 @@ export const projectsService = {
     return data;
   },
 
+  getArchived: async () => {
+    const { data } = await apiClient.get<Project[]>("/projects/archived");
+    return data;
+  },
+
   getById: async (id: string) => {
     const { data } = await apiClient.get<Project>(`/projects/${id}`);
     return data;
@@ -30,6 +35,16 @@ export const projectsService = {
 
   update: async (id: number, payload: UpdateProjectPayload) => {
     const { data } = await apiClient.patch<Project>(`/projects/${id}`, payload);
+    return data;
+  },
+
+  archive: async (id: number) => {
+    const { data } = await apiClient.post<{ ok: true }>(`/projects/${id}/archive`);
+    return data;
+  },
+
+  unarchive: async (id: number) => {
+    const { data } = await apiClient.post<{ ok: true }>(`/projects/${id}/unarchive`);
     return data;
   },
 

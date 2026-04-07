@@ -33,6 +33,7 @@ const projectListItem = t.Object({
   createdById: t.Union([t.String(), t.Null()]),
   createdAt: t.Date(),
   updatedAt: t.Date(),
+  archivedAt: t.Union([t.Date(), t.Null()]),
   company: companyMini,
   _count: countShape,
   memberPreview: t.Array(memberPreviewUser),
@@ -47,6 +48,7 @@ const projectDetail = t.Object({
   createdById: t.Union([t.String(), t.Null()]),
   createdAt: t.Date(),
   updatedAt: t.Date(),
+  archivedAt: t.Union([t.Date(), t.Null()]),
   company: t.Union([companyMini, t.Null()]),
 });
 

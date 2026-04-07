@@ -5,6 +5,7 @@ import { projectsService } from "./service";
 
 const PROJECT_KEYS = {
   all: () => ["projects"] as const,
+  archived: () => ["projects", "archived"] as const,
   detail: (id: string) => ["projects", id] as const,
   files: (projectId: string) => ["projects", projectId, "files"] as const,
   members: (projectId: number) => ["projects", projectId, "members"] as const,
@@ -36,6 +37,14 @@ const projectMembersQuery = (projectId: number | undefined) =>
 
 export function useProjects() {
   return useQuery(projectsQuery());
+}
+
+export function useArchivedProjects(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: PROJECT_KEYS.archived(),
+    queryFn: projectsService.getArchived,
+    ...options,
+  });
 }
 
 export function useProject(id: string | undefined) {
@@ -76,11 +85,36 @@ export function useUpdateProject() {
   });
 }
 
+export function useArchiveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => projectsService.archive(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: PROJECT_KEYS.all() });
+      void qc.invalidateQueries({ queryKey: PROJECT_KEYS.archived() });
+    },
+  });
+}
+
+export function useUnarchiveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => projectsService.unarchive(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: PROJECT_KEYS.all() });
+      void qc.invalidateQueries({ queryKey: PROJECT_KEYS.archived() });
+    },
+  });
+}
+
 export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => projectsService.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: PROJECT_KEYS.all() }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: PROJECT_KEYS.all() });
+      void qc.invalidateQueries({ queryKey: PROJECT_KEYS.archived() });
+    },
   });
 }
 

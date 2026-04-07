@@ -1,6 +1,6 @@
 {
-  "id": "3e84cc09-cf77-4813-afe2-3e10dc0528e9",
-  "prevId": "da3b3fa7-af8d-4cbf-bedc-d5efeb4d77a8",
+  "id": "f1b34519-a078-42ec-9bd4-e13fc6d939dd",
+  "prevId": "3e84cc09-cf77-4813-afe2-3e10dc0528e9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1106,6 +1106,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},

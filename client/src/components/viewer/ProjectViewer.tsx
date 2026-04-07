@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type CSSProperties,
@@ -80,6 +81,719 @@ interface PinPosition {
   orphaned: boolean;
 }
 
+/* ──────────────────────────── Viewer Reducer ──────────────────────────── */
+
+interface ViewerState {
+  html: string | null;
+  htmlLoading: boolean;
+  htmlError: string | null;
+  pinPositions: Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }>;
+  anchorResolvedMap: Record<string, boolean>;
+  activeThreadId: number | null;
+  ghostRaw: { cx: number; cy: number; scrollWidth: number; scrollHeight: number; anchor: Anchor } | null;
+  selectedVersionId: number | null;
+  commentsOpen: boolean;
+  mobileSheet: boolean;
+  forceOpenVersionSelector: boolean;
+}
+
+type ViewerAction =
+  | { type: "HTML_FETCH_START" }
+  | { type: "HTML_FETCH_OK"; html: string }
+  | { type: "HTML_FETCH_ERR"; error: string }
+  | { type: "CLEAR_HTML" }
+  | { type: "SET_PINS"; pins: ViewerState["pinPositions"] }
+  | { type: "SET_ANCHOR_RESOLVED"; map: Record<string, boolean> }
+  | { type: "SET_ACTIVE_THREAD"; id: number | null }
+  | { type: "UPDATE_ACTIVE_THREAD"; updater: (prev: number | null) => number | null }
+  | { type: "SET_GHOST"; ghost: ViewerState["ghostRaw"] }
+  | { type: "UPDATE_GHOST"; updater: (prev: ViewerState["ghostRaw"]) => ViewerState["ghostRaw"] }
+  | { type: "SET_VERSION"; id: number | null }
+  | { type: "UPDATE_VERSION"; updater: (prev: number | null) => number | null }
+  | { type: "FILE_SWITCH_RESET" }
+  | { type: "FULLSCREEN_ENTER" }
+  | { type: "SPA_NAV_CLEAR" }
+  | { type: "PINS_AND_GHOST"; pins: ViewerState["pinPositions"]; ghost: ViewerState["ghostRaw"] }
+  | { type: "SET_COMMENTS_OPEN"; open: boolean }
+  | { type: "TOGGLE_COMMENTS_OPEN" }
+  | { type: "SET_MOBILE_SHEET"; open: boolean }
+  | { type: "SET_FORCE_OPEN_VERSION_SELECTOR"; open: boolean };
+
+const viewerInitial: ViewerState = {
+  html: null,
+  htmlLoading: false,
+  htmlError: null,
+  pinPositions: {},
+  anchorResolvedMap: {},
+  activeThreadId: null,
+  ghostRaw: null,
+  selectedVersionId: null,
+  commentsOpen: true,
+  mobileSheet: false,
+  forceOpenVersionSelector: false,
+};
+
+function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
+  switch (action.type) {
+    case "HTML_FETCH_START":
+      return { ...state, htmlLoading: true, htmlError: null, anchorResolvedMap: {}, pinPositions: {} };
+    case "HTML_FETCH_OK":
+      return { ...state, html: action.html, htmlLoading: false };
+    case "HTML_FETCH_ERR":
+      return { ...state, htmlError: action.error, htmlLoading: false };
+    case "CLEAR_HTML":
+      return { ...state, html: null };
+    case "SET_PINS":
+      return { ...state, pinPositions: action.pins };
+    case "SET_ANCHOR_RESOLVED":
+      return { ...state, anchorResolvedMap: action.map };
+    case "SET_ACTIVE_THREAD":
+      return { ...state, activeThreadId: action.id };
+    case "UPDATE_ACTIVE_THREAD":
+      return { ...state, activeThreadId: action.updater(state.activeThreadId) };
+    case "SET_GHOST":
+      return { ...state, ghostRaw: action.ghost };
+    case "UPDATE_GHOST":
+      return { ...state, ghostRaw: action.updater(state.ghostRaw) };
+    case "SET_VERSION":
+      return { ...state, selectedVersionId: action.id };
+    case "UPDATE_VERSION":
+      return { ...state, selectedVersionId: action.updater(state.selectedVersionId) };
+    case "FILE_SWITCH_RESET":
+      return { ...state, selectedVersionId: null, pinPositions: {}, anchorResolvedMap: {}, activeThreadId: null, ghostRaw: null };
+    case "FULLSCREEN_ENTER":
+      return { ...state, ghostRaw: null, activeThreadId: null, commentsOpen: false, mobileSheet: false };
+    case "SPA_NAV_CLEAR":
+      return { ...state, pinPositions: {}, anchorResolvedMap: {}, activeThreadId: null, ghostRaw: null };
+    case "PINS_AND_GHOST":
+      return { ...state, pinPositions: action.pins, ghostRaw: action.ghost };
+    case "SET_COMMENTS_OPEN":
+      return { ...state, commentsOpen: action.open };
+    case "TOGGLE_COMMENTS_OPEN":
+      return { ...state, commentsOpen: !state.commentsOpen };
+    case "SET_MOBILE_SHEET":
+      return { ...state, mobileSheet: action.open };
+    case "SET_FORCE_OPEN_VERSION_SELECTOR":
+      return { ...state, forceOpenVersionSelector: action.open };
+    default:
+      return state;
+  }
+}
+
+/* ──────────────────────────── useViewerComments ──────────────────────────── */
+
+function useViewerComments({
+  fileId,
+  selectedVersionId,
+  topLevelComments,
+  ghostRaw,
+  activeThreadId,
+  dispatch,
+  createComment,
+  patchComment,
+  deleteComment,
+  addTag,
+  tagList,
+  selectedTagIds,
+  setSelectedTagIds,
+}: {
+  fileId: string | null;
+  selectedVersionId: number | null;
+  topLevelComments: Comment[];
+  ghostRaw: ViewerState["ghostRaw"];
+  activeThreadId: number | null;
+  dispatch: React.Dispatch<ViewerAction>;
+  createComment: ReturnType<typeof useCreateComment>;
+  patchComment: ReturnType<typeof usePatchComment>;
+  deleteComment: ReturnType<typeof useDeleteComment>;
+  addTag: ReturnType<typeof useAddCommentTag>;
+  tagList: import("@/types").Tag[] | undefined;
+  selectedTagIds: number[];
+  setSelectedTagIds: React.Dispatch<React.SetStateAction<number[]>>;
+}) {
+  const onSubmitNewComment = useCallback(async (body: string) => {
+    if (!fileId) { toast.error("Select a file first"); return; }
+    if (!selectedVersionId) { toast.error("No version selected"); return; }
+    const tempId = -Date.now();
+    const anchor = ghostRaw?.anchor ?? emptyAnchor();
+    const tagsToAdd = selectedTagIds;
+    const optimisticTags = (tagList ?? []).filter((t) => tagsToAdd.includes(t.id));
+    dispatch({ type: "SET_GHOST", ghost: null });
+    setSelectedTagIds([]);
+    dispatch({ type: "SET_ACTIVE_THREAD", id: tempId });
+    try {
+      const row = await createComment.mutateAsync({
+        fileId: Number(fileId),
+        versionId: selectedVersionId!,
+        body,
+        anchor,
+        parentId: undefined,
+        _tempId: tempId,
+        _tags: optimisticTags,
+      });
+      for (const tagId of tagsToAdd) {
+        await addTag.mutateAsync({ commentId: row.id, tagId });
+      }
+      dispatch({ type: "UPDATE_ACTIVE_THREAD", updater: (prev) => (prev === tempId ? row.id : prev) });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to post");
+      dispatch({ type: "SET_ACTIVE_THREAD", id: null });
+    }
+  }, [fileId, selectedVersionId, ghostRaw, selectedTagIds, tagList, dispatch, createComment, addTag, setSelectedTagIds]);
+
+  const onResolve = useCallback(async (id: number, resolved: boolean) => {
+    try {
+      await patchComment.mutateAsync({ id, resolved });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    }
+  }, [patchComment]);
+
+  const onDelete = useCallback(async (id: number) => {
+    if (activeThreadId === id) dispatch({ type: "SET_ACTIVE_THREAD", id: null });
+    try {
+      await deleteComment.mutateAsync(id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  }, [activeThreadId, dispatch, deleteComment]);
+
+  const onReply = useCallback(async (commentId: number, body: string) => {
+    if (!fileId) return;
+    const parent = topLevelComments.find((c) => c.id === commentId);
+    const versionId = selectedVersionId;
+    if (!versionId) return;
+    try {
+      await createComment.mutateAsync({
+        fileId: Number(fileId),
+        versionId,
+        body,
+        anchor: parent?.anchor ?? emptyAnchor(),
+        parentId: commentId,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to reply");
+    }
+  }, [fileId, selectedVersionId, topLevelComments, createComment]);
+
+  const onNewCommentFromThread = useCallback(async (sourceCommentId: number, body: string) => {
+    if (!fileId) return;
+    const source = topLevelComments.find((c) => c.id === sourceCommentId);
+    const versionId = selectedVersionId;
+    if (!versionId) return;
+    try {
+      await createComment.mutateAsync({
+        fileId: Number(fileId),
+        versionId,
+        body,
+        anchor: source?.anchor ?? emptyAnchor(),
+        parentId: undefined,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to post");
+    }
+  }, [fileId, selectedVersionId, topLevelComments, createComment]);
+
+  const onSubmitDirectComment = useCallback(async (body: string) => {
+    if (!fileId) { toast.error("Select a file first"); return; }
+    if (!selectedVersionId) { toast.error("No version selected"); return; }
+    const tempId = -Date.now();
+    const tagsToAdd = selectedTagIds;
+    const optimisticTags = (tagList ?? []).filter((t) => tagsToAdd.includes(t.id));
+    setSelectedTagIds([]);
+    dispatch({ type: "SET_ACTIVE_THREAD", id: tempId });
+    try {
+      const row = await createComment.mutateAsync({
+        fileId: Number(fileId),
+        versionId: selectedVersionId,
+        body,
+        anchor: emptyAnchor(),
+        parentId: undefined,
+        _tempId: tempId,
+        _tags: optimisticTags,
+      });
+      for (const tagId of tagsToAdd) await addTag.mutateAsync({ commentId: row.id, tagId });
+      dispatch({ type: "UPDATE_ACTIVE_THREAD", updater: (prev) => (prev === tempId ? row.id : prev) });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to post");
+      dispatch({ type: "SET_ACTIVE_THREAD", id: null });
+    }
+  }, [fileId, selectedVersionId, selectedTagIds, tagList, dispatch, createComment, addTag, setSelectedTagIds]);
+
+  const onEditComment = useCallback(async (id: number, body: string) => {
+    try {
+      await patchComment.mutateAsync({ id, body });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Edit failed");
+    }
+  }, [patchComment]);
+
+  const onUnlink = useCallback(async (id: number) => {
+    dispatch({ type: "SET_ACTIVE_THREAD", id: null });
+    try {
+      await patchComment.mutateAsync({ id, anchor: null });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    }
+  }, [dispatch, patchComment]);
+
+  return { onSubmitNewComment, onResolve, onDelete, onReply, onNewCommentFromThread, onSubmitDirectComment, onEditComment, onUnlink };
+}
+
+/* ──────────────────────────── useViewerDnd ──────────────────────────── */
+
+function useViewerDnd({
+  iframeRef,
+  topLevelComments,
+  patchComment,
+  processAnchorSelected,
+}: {
+  iframeRef: React.RefObject<HTMLIFrameElement | null>;
+  topLevelComments: Comment[];
+  patchComment: ReturnType<typeof usePatchComment>;
+  processAnchorSelected: (anchor: Anchor) => void;
+}) {
+  const [reLinkCommentId, setReLinkCommentId] = useState<number | null>(null);
+  const reLinkCommentIdRef = useRef<number | null>(null);
+  reLinkCommentIdRef.current = reLinkCommentId;
+  const patchCommentRef = useRef(patchComment);
+  patchCommentRef.current = patchComment;
+  const pendingContextMenuFractionRef = useRef<{ fX: number; fY: number } | null>(null);
+  const contextMenuTriggerRef = useRef<HTMLSpanElement>(null);
+  const [isOverIframe, setIsOverIframe] = useState(false);
+  const pointerPosRef = useRef<{ x: number; y: number } | null>(null);
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Track pointer position + iframe hover highlight during re-link drag
+  useEffect(() => {
+    if (!reLinkCommentId) {
+      pointerPosRef.current = null;
+      return;
+    }
+    function onMove(e: PointerEvent) {
+      pointerPosRef.current = { x: e.clientX, y: e.clientY };
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      const rect = iframe.getBoundingClientRect();
+      const over = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      setIsOverIframe(over);
+      if (over) {
+        iframe.contentWindow?.postMessage({
+          type: "HIGHLIGHT_AT_POINT",
+          fractionX: (e.clientX - rect.left) / rect.width,
+          fractionY: (e.clientY - rect.top) / rect.height,
+        }, "*");
+      } else {
+        iframe.contentWindow?.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
+      }
+    }
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [reLinkCommentId, iframeRef]);
+
+  // Handle ELEMENT_PICKED_AT from iframe bridge
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type !== "ELEMENT_PICKED_AT") return;
+      const relinkId = reLinkCommentIdRef.current;
+      if (relinkId !== null) {
+        reLinkCommentIdRef.current = null;
+        setReLinkCommentId(null);
+        setIsOverIframe(false);
+        iframeRef.current?.contentWindow?.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
+        if (!e.data.anchor) { toast.error("No element at that position"); return; }
+        void patchCommentRef.current.mutateAsync({ id: relinkId, anchor: e.data.anchor as Anchor })
+          .catch((err: Error) => toast.error(err.message));
+        return;
+      }
+      if (pendingContextMenuFractionRef.current !== null) {
+        pendingContextMenuFractionRef.current = null;
+        if (!e.data.anchor) { toast.error("No element at that position"); return; }
+        processAnchorSelected(e.data.anchor as Anchor);
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [processAnchorSelected, iframeRef]);
+
+  function onDragStart({ active }: { active: { data: { current?: { commentId?: number } } } }) {
+    const commentId = active.data.current?.commentId;
+    if (commentId) setReLinkCommentId(commentId);
+  }
+
+  function onDragEnd() {
+    const pos = pointerPosRef.current;
+    const iframe = iframeRef.current;
+    iframeRef.current?.contentWindow?.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
+    setIsOverIframe(false);
+
+    if (pos && iframe) {
+      const rect = iframe.getBoundingClientRect();
+      if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) {
+        iframe.contentWindow?.postMessage({
+          type: "PICK_ELEMENT_AT",
+          fractionX: (pos.x - rect.left) / rect.width,
+          fractionY: (pos.y - rect.top) / rect.height,
+        }, "*");
+        return;
+      }
+    }
+    setReLinkCommentId(null);
+    pointerPosRef.current = null;
+  }
+
+  const onReLink = useCallback((id: number) => {
+    setReLinkCommentId(id);
+  }, []);
+
+  const draggedComment = reLinkCommentId ? topLevelComments.find((c) => c.id === reLinkCommentId) : null;
+
+  return {
+    reLinkCommentId,
+    isOverIframe,
+    dndSensors,
+    onDragStart,
+    onDragEnd,
+    onReLink,
+    draggedComment,
+    contextMenuTriggerRef,
+    pendingContextMenuFractionRef,
+  };
+}
+
+/* ──────────────────────────── useViewerIframe ──────────────────────────── */
+
+function useViewerIframe({
+  iframeRef,
+  overlayRef,
+  topLevelComments,
+  pinPositions,
+  ghostRaw,
+  ghostRawRef,
+  isFullscreen,
+  commentsOpen,
+  anchorResolutionItems,
+  isSpaNavigatingRef,
+  spaNavTimeoutRef,
+  dispatch,
+}: {
+  iframeRef: React.RefObject<HTMLIFrameElement | null>;
+  overlayRef: React.RefObject<HTMLDivElement | null>;
+  topLevelComments: Comment[];
+  pinPositions: ViewerState["pinPositions"];
+  ghostRaw: ViewerState["ghostRaw"];
+  ghostRawRef: React.MutableRefObject<ViewerState["ghostRaw"]>;
+  isFullscreen: boolean;
+  commentsOpen: boolean;
+  anchorResolutionItems: { id: string; anchor: Anchor }[];
+  isSpaNavigatingRef: React.MutableRefObject<boolean>;
+  spaNavTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | undefined>;
+  dispatch: React.Dispatch<ViewerAction>;
+}) {
+  const [iframeVersion, setIframeVersion] = useState(0);
+
+  const requestAnchorPositions = useCallback(
+    (opts?: { flushSync?: boolean }) => {
+      const iframe = iframeRef.current;
+      const win = iframe?.contentWindow;
+      if (!win || isFullscreen) return;
+      const withAnchors = topLevelComments.filter((c) => c.anchor && (c.anchor.selector || c.anchor.dataComment));
+      const ghost = ghostRawRef.current;
+      if (!withAnchors.length && !ghost) {
+        dispatch({ type: "SET_PINS", pins: {} });
+        return;
+      }
+      const cmts = withAnchors.map((c) => ({ id: String(c.id), anchor: c.anchor as Anchor }));
+      if (ghost) {
+        cmts.push({ id: "__ghost__", anchor: ghost.anchor });
+      }
+
+      const measured = iframe ? measureAnchorsInIframe(iframe, cmts) : null;
+      if (measured) {
+        const apply = () => {
+          if (measured.ghost) {
+            dispatch({ type: "PINS_AND_GHOST", pins: measured.pins, ghost: ghostRawRef.current ? {
+              ...ghostRawRef.current,
+              cx: measured.ghost.cx,
+              cy: measured.ghost.cy,
+              scrollWidth: measured.ghost.scrollWidth,
+              scrollHeight: measured.ghost.scrollHeight,
+            } : null });
+          } else {
+            dispatch({ type: "SET_PINS", pins: measured.pins });
+          }
+        };
+        if (opts?.flushSync) {
+          flushSync(apply);
+        } else {
+          apply();
+        }
+        return;
+      }
+
+      win.postMessage({
+        type: "GET_ANCHOR_POSITIONS",
+        requestId: "pins",
+        comments: cmts,
+      }, "*");
+    },
+    [topLevelComments, isFullscreen, iframeRef, ghostRawRef, dispatch],
+  );
+
+  const requestAnchorPositionsRef = useRef(requestAnchorPositions);
+  useEffect(() => { requestAnchorPositionsRef.current = requestAnchorPositions; }, [requestAnchorPositions]);
+  const anchorResolutionItemsRef = useRef(anchorResolutionItems);
+  useEffect(() => { anchorResolutionItemsRef.current = anchorResolutionItems; }, [anchorResolutionItems]);
+
+  // Listen for ANCHOR_POSITIONS response
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (
+        e.data?.type === "ANCHOR_POSITIONS" &&
+        e.data.requestId === "pins" &&
+        e.data.positions &&
+        typeof e.data.positions === "object"
+      ) {
+        const raw = e.data.positions as Record<
+          string,
+          { left: number; top: number; width: number; height: number; scrollWidth: number; scrollHeight: number }
+        >;
+        const next: Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }> = {};
+        for (const id of Object.keys(raw)) {
+          if (id === "__ghost__") continue;
+          const p = raw[id];
+          next[id] = {
+            cx: p.left + p.width / 2,
+            cy: p.top + p.height / 2,
+            scrollWidth: p.scrollWidth,
+            scrollHeight: p.scrollHeight,
+          };
+        }
+        const ghostPos = raw.__ghost__;
+        if (ghostPos) {
+          dispatch({ type: "PINS_AND_GHOST", pins: next, ghost: ghostRawRef.current ? {
+            ...ghostRawRef.current,
+            cx: ghostPos.left + ghostPos.width / 2,
+            cy: ghostPos.top + ghostPos.height / 2,
+            scrollWidth: ghostPos.scrollWidth,
+            scrollHeight: ghostPos.scrollHeight,
+          } : null });
+        } else {
+          dispatch({ type: "SET_PINS", pins: next });
+        }
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const iframeListenersDetachRef = useRef<(() => void) | undefined>(undefined);
+
+  const handleFrameReady = useCallback(() => {
+    iframeListenersDetachRef.current?.();
+    iframeListenersDetachRef.current = undefined;
+
+    const iframeEl = iframeRef.current;
+    if (!iframeEl) return;
+    const doc = iframeEl.contentDocument;
+    const win = iframeEl.contentWindow;
+    if (!doc || !win) return;
+
+    const onScrollOrResize = () => {
+      if (isSpaNavigatingRef.current || (window as any).__ebmsSpaNav) return;
+      requestAnchorPositionsRef.current({ flushSync: true });
+    };
+    doc.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true });
+    win.addEventListener("resize", onScrollOrResize);
+
+    let mutationRaf = 0;
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(mutationRaf);
+      mutationRaf = requestAnimationFrame(() => {
+        if (isSpaNavigatingRef.current) return;
+        requestAnchorPositionsRef.current({ flushSync: true });
+        const items = anchorResolutionItemsRef.current;
+        if (items.length) {
+          const resolved: Record<string, boolean> = {};
+          for (const item of items) {
+            resolved[item.id] = !!resolveAnchorInDocument(doc, item.anchor);
+          }
+          dispatch({ type: "SET_ANCHOR_RESOLVED", map: resolved });
+        }
+      });
+    });
+    if (doc.body) {
+      observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
+    }
+
+    iframeListenersDetachRef.current = () => {
+      doc.removeEventListener("scroll", onScrollOrResize, { capture: true });
+      win.removeEventListener("resize", onScrollOrResize);
+      cancelAnimationFrame(mutationRaf);
+      observer.disconnect();
+    };
+
+    requestAnchorPositions();
+  }, [requestAnchorPositions, iframeRef, isSpaNavigatingRef, dispatch]);
+
+  // Fullscreen pin clear + request
+  useEffect(() => {
+    if (isFullscreen) {
+      dispatch({ type: "SET_PINS", pins: {} });
+      return;
+    }
+    requestAnchorPositions();
+  }, [requestAnchorPositions, isFullscreen, dispatch]);
+
+  // ResizeObserver on overlay
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => { requestAnchorPositions(); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [requestAnchorPositions, overlayRef]);
+
+  // ResizeObserver on iframe
+  useEffect(() => {
+    const el = iframeRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setIframeVersion((v) => v + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sidebar animation tracker
+  useEffect(() => {
+    if (isFullscreen) return;
+    const iframeEl = iframeRef.current;
+    if (!iframeEl) return;
+    let raf = 0;
+    let frame = 0;
+    let prev = iframeEl.getBoundingClientRect();
+    const maxFrames = 36;
+    const step = () => {
+      frame += 1;
+      const next = iframeEl.getBoundingClientRect();
+      if (
+        Math.abs(next.left - prev.left) > 0.25 ||
+        Math.abs(next.top - prev.top) > 0.25 ||
+        Math.abs(next.width - prev.width) > 0.25 ||
+        Math.abs(next.height - prev.height) > 0.25
+      ) {
+        prev = next;
+        setIframeVersion((v) => v + 1);
+      }
+      if (frame < maxFrames) raf = window.requestAnimationFrame(step);
+    };
+    raf = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(raf);
+  }, [commentsOpen, isFullscreen, iframeRef]);
+
+  // Cleanup iframe listeners on fullscreen/unmount
+  useEffect(() => {
+    if (isFullscreen) {
+      iframeListenersDetachRef.current?.();
+      iframeListenersDetachRef.current = undefined;
+    }
+    return () => {
+      iframeListenersDetachRef.current?.();
+      iframeListenersDetachRef.current = undefined;
+    };
+  }, [isFullscreen]);
+
+  // SPA navigation handler
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type === "PAGE_NAV") {
+        isSpaNavigatingRef.current = true;
+        clearTimeout(spaNavTimeoutRef.current);
+        spaNavTimeoutRef.current = setTimeout(() => {
+          if (isSpaNavigatingRef.current) {
+            isSpaNavigatingRef.current = false;
+            try { (window as any).__ebmsSpaNav = false; } catch {}
+            requestAnchorPositions({ flushSync: true });
+          }
+        }, 3000);
+        flushSync(() => {
+          dispatch({ type: "SPA_NAV_CLEAR" });
+        });
+        return;
+      }
+      if (e.data?.type === "PAGE_CHANGE") {
+        isSpaNavigatingRef.current = false;
+        clearTimeout(spaNavTimeoutRef.current);
+        requestAnchorPositions({ flushSync: true });
+        const doc = iframeRef.current?.contentDocument;
+        if (doc && anchorResolutionItemsRef.current.length) {
+          const resolved: Record<string, boolean> = {};
+          for (const item of anchorResolutionItemsRef.current) {
+            resolved[item.id] = !!resolveAnchorInDocument(doc, item.anchor);
+          }
+          flushSync(() => dispatch({ type: "SET_ANCHOR_RESOLVED", map: resolved }));
+        }
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [requestAnchorPositions, iframeRef, isSpaNavigatingRef, spaNavTimeoutRef, dispatch]);
+
+  const rawToOverlay = useCallback(
+    (cx: number, cy: number, scrollWidth: number, scrollHeight: number): { x: number; y: number } => {
+      const overlay = overlayRef.current;
+      const iframeEl = iframeRef.current;
+      if (!overlay || !iframeEl) return { x: cx, y: cy };
+      const oRect = overlay.getBoundingClientRect();
+      const iRect = iframeEl.getBoundingClientRect();
+      const scaleX = scrollWidth > 0 ? iRect.width / scrollWidth : 1;
+      const scaleY = scrollHeight > 0 ? iRect.height / scrollHeight : 1;
+      const dx = iRect.left - oRect.left;
+      const dy = iRect.top - oRect.top;
+      return {
+        x: Math.round(cx * scaleX + dx),
+        y: Math.round(cy * scaleY + dy),
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [iframeVersion],
+  );
+
+  const ghostPin = useMemo(() => {
+    if (!ghostRaw) return null;
+    const { x, y } = rawToOverlay(ghostRaw.cx, ghostRaw.cy, ghostRaw.scrollWidth, ghostRaw.scrollHeight);
+    return { x, y, anchor: ghostRaw.anchor };
+  }, [ghostRaw, rawToOverlay]);
+
+  const pins: PinPosition[] = useMemo(() => {
+    if (!topLevelComments.length) return [];
+    const result: PinPosition[] = [];
+    let orphanedIndex = 0;
+    for (const c of topLevelComments) {
+      if (c.resolved) continue;
+      const pos = pinPositions[String(c.id)];
+      const hasAnchor = c.anchor && (c.anchor.selector || c.anchor.dataComment);
+      if (!hasAnchor) continue;
+      if (!pos) { orphanedIndex++; continue; }
+      const { x, y } = rawToOverlay(pos.cx, pos.cy, pos.scrollWidth, pos.scrollHeight);
+      result.push({ commentId: c.id, x, y, orphaned: false });
+    }
+    return result;
+  }, [topLevelComments, pinPositions, rawToOverlay]);
+
+  const sendHighlight = useCallback((a: Anchor | null) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    if (a) win.postMessage({ type: "HIGHLIGHT_ELEMENT", anchor: a }, "*");
+    else win.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
+  }, [iframeRef]);
+
+  return { pins, ghostPin, sendHighlight, handleFrameReady, requestAnchorPositions };
+}
+
+/* ──────────────────────────── ProjectViewer ──────────────────────────── */
+
 export function ProjectViewer({ projectId }: { projectId: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -88,7 +802,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   const queryClient = useQueryClient();
   const { user: authUser } = useAuth();
-  // Cast to our app User type — better-auth user has compatible fields for display purposes
   const user = authUser as import("@/types").User | null;
   const { data: project } = useProject(projectId);
   const { data: files, isPending: filesLoading } = useProjectFiles(projectId);
@@ -107,28 +820,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   const [fileId, setFileId] = useQueryState("file");
   const [commentParam, setCommentParam] = useQueryState("comment", parseAsInteger);
-  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [html, setHtml] = useState<string | null>(null);
-  const [htmlLoading, setHtmlLoading] = useState(false);
-  const [htmlError, setHtmlError] = useState<string | null>(null);
+  const [vs, dispatch] = useReducer(viewerReducer, viewerInitial);
+  const { html, htmlLoading, htmlError, pinPositions, anchorResolvedMap, activeThreadId, ghostRaw, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector } = vs;
 
-  // Raw iframe-viewport coords from bridge — converted to overlay coords at render time
-  const [pinPositions, setPinPositions] = useState<
-    Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }>
-  >({});
-  // Raw ghost coords (set at message time, converted at render time)
-  const [ghostRaw, setGhostRaw] = useState<{
-    cx: number; cy: number; scrollWidth: number; scrollHeight: number; anchor: Anchor;
-  } | null>(null);
+  // Raw ghost coords ref for stable access in callbacks
   const ghostRawRef = useRef(ghostRaw);
-  useEffect(() => {
-    ghostRawRef.current = ghostRaw;
-  }, [ghostRaw]);
-  // Iframe rect version counter — incremented by ResizeObserver to force re-render when iframe moves
-  const [iframeVersion, setIframeVersion] = useState(0);
+  useEffect(() => { ghostRawRef.current = ghostRaw; }, [ghostRaw]);
 
-  // Active thread popover
-  const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   // Keeps last known pin/comment so Radix can animate out before unmounting
   const lastPopoverStateRef = useRef<{
     threadId: number;
@@ -137,13 +835,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     relatedComments: Comment[];
   } | null>(null);
 
-  // Track whether the initial ?comment= URL param has been consumed (thread opened from it).
-  // Declared here so the sync effect below can reference it.
   const consumedUrlCommentRef = useRef(false);
 
-  // Sync activeThreadId → ?comment= param (skip temp IDs < 0).
-  // Only clear the param once the URL comment has been consumed — avoids wiping it on initial load
-  // before the auto-open effect has a chance to run.
+  // Sync activeThreadId → ?comment= param
   useEffect(() => {
     if (activeThreadId === null || activeThreadId < 0) {
       if (consumedUrlCommentRef.current) void setCommentParam(null);
@@ -153,24 +847,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
 
-  // Pending anchor waiting for position resolution — stored in a ref to avoid stale closure race
   const pendingGhostAnchorRef = useRef<Anchor | null>(null);
   const pendingMatchRequestIdRef = useRef<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const [mobileSheet, setMobileSheet] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(true);
-  const [anchorResolvedMap, setAnchorResolvedMap] = useState<Record<string, boolean>>({});
-  // True between PAGE_NAV and PAGE_CHANGE — suppresses scroll-triggered re-requests that
-  // would re-add stale pins from the old DOM after navigation clears them.
   const isSpaNavigatingRef = useRef(false);
-  const spaNavTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-
+  const spaNavTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useProjectWS(projectId);
 
   // Auto-check for new file versions every 5 min
-  const [forceOpenVersionSelector, setForceOpenVersionSelector] = useState(false);
   const { data: newVersionsData } = useCheckNewVersions(projectId);
   const shownNewVersionsRef = useRef<string | null>(null);
 
@@ -180,7 +865,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     if (shownNewVersionsRef.current === key) return;
     shownNewVersionsRef.current = key;
 
-    // Invalidate cached version lists for files that have new versions
     for (const entry of newVersionsData) {
       void queryClient.invalidateQueries({
         queryKey: FILE_VERSION_KEYS.all(projectId, String(entry.fileId)),
@@ -198,7 +882,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             label: "Change version",
             onClick: () => {
               void setFileId(String(entry.fileId));
-              setForceOpenVersionSelector(true);
+              dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: true });
             },
           },
           cancel: {
@@ -218,61 +902,40 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     });
   }, [files, setFileId]);
 
+  // Fetch HTML
   useEffect(() => {
     if (!projectId || !fileId) {
-      setHtml(null);
+      dispatch({ type: "CLEAR_HTML" });
       return;
     }
     let cancelled = false;
-    setHtmlLoading(true);
-    setHtmlError(null);
-    setAnchorResolvedMap({});
-    setPinPositions({});
+    dispatch({ type: "HTML_FETCH_START" });
     const suffix = selectedVersionId ? `?versionId=${selectedVersionId}` : "";
     void apiText(`/projects/${projectId}/files/${fileId}/html${suffix}`)
-      .then((t) => { if (!cancelled) setHtml(t); })
-      .catch((e: Error) => { if (!cancelled) setHtmlError(e.message || "Failed to load HTML"); })
-      .finally(() => { if (!cancelled) setHtmlLoading(false); });
+      .then((t) => { if (!cancelled) dispatch({ type: "HTML_FETCH_OK", html: t }); })
+      .catch((e: Error) => { if (!cancelled) dispatch({ type: "HTML_FETCH_ERR", error: e.message || "Failed to load HTML" }); });
     return () => { cancelled = true; };
   }, [projectId, fileId, selectedVersionId]);
 
   const canManageVersions = user?.role === "admin" || user?.role === "manager";
-  const { data: fileVersionsList } = useFileVersions(
-    projectId,
-    fileId ?? undefined,
-  );
+  const { data: fileVersionsList } = useFileVersions(projectId, fileId ?? undefined);
 
   // Reset version + stale pins on file switch (render-time derivation)
-  const [prevFileId, setPrevFileId] = useState(fileId);
-  if (fileId !== prevFileId) {
-    setPrevFileId(fileId);
-    setSelectedVersionId(null);
-    setPinPositions({});
-    setAnchorResolvedMap({});
-    setActiveThreadId(null);
-    setGhostRaw(null);
+  const prevFileIdRef = useRef(fileId);
+  if (fileId !== prevFileIdRef.current) {
+    prevFileIdRef.current = fileId;
+    dispatch({ type: "FILE_SWITCH_RESET" });
   }
 
   useEffect(() => {
     if (!fileVersionsList?.length) return;
-    setSelectedVersionId((prev) => {
+    dispatch({ type: "UPDATE_VERSION", updater: (prev) => {
       if (prev && fileVersionsList.some((v) => v.id === prev)) return prev;
       return fileVersionsList[0]?.id ?? null;
-    });
+    }});
   }, [fileVersionsList]);
 
   const { data: comments, isPending: commentsLoading } = useComments(projectId, fileId ?? undefined, selectedVersionId);
-  const [reLinkCommentId, setReLinkCommentId] = useState<number | null>(null);
-  const reLinkCommentIdRef = useRef<number | null>(null);
-  reLinkCommentIdRef.current = reLinkCommentId;
-  const patchCommentRef = useRef(patchComment);
-  patchCommentRef.current = patchComment;
-  const pendingContextMenuFractionRef = useRef<{ fX: number; fY: number } | null>(null);
-  const contextMenuTriggerRef = useRef<HTMLSpanElement>(null);
-  const [isOverIframe, setIsOverIframe] = useState(false);
-  const pointerPosRef = useRef<{ x: number; y: number } | null>(null);
-
-  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const topLevelComments = useMemo(() => {
     const rows = comments ?? [];
@@ -308,309 +971,34 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   );
 
   const handleAnchorResolution = useCallback((resolved: Record<string, boolean>) => {
-    setAnchorResolvedMap(resolved);
+    dispatch({ type: "SET_ANCHOR_RESOLVED", map: resolved });
   }, []);
 
-  // Prefer synchronous measurement in the parent (same-origin srcdoc) to avoid postMessage + paint lag on scroll.
-  const requestAnchorPositions = useCallback(
-    (opts?: { flushSync?: boolean }) => {
-      const iframe = iframeRef.current;
-      const win = iframe?.contentWindow;
-      if (!win || isFullscreen) return;
-      const withAnchors = topLevelComments.filter((c) => c.anchor && (c.anchor.selector || c.anchor.dataComment));
-      const ghost = ghostRawRef.current;
-      if (!withAnchors.length && !ghost) {
-        setPinPositions({});
-        return;
-      }
-      const comments = withAnchors.map((c) => ({ id: String(c.id), anchor: c.anchor as Anchor }));
-      if (ghost) {
-        comments.push({ id: "__ghost__", anchor: ghost.anchor });
-      }
+  const iframe = useViewerIframe({
+    iframeRef,
+    overlayRef,
+    topLevelComments,
+    pinPositions,
+    ghostRaw,
+    ghostRawRef,
+    isFullscreen,
+    commentsOpen,
+    anchorResolutionItems,
+    isSpaNavigatingRef,
+    spaNavTimeoutRef,
+    dispatch,
+  });
 
-      const measured = iframe ? measureAnchorsInIframe(iframe, comments) : null;
-      if (measured) {
-        const apply = () => {
-          setPinPositions(measured.pins);
-          if (measured.ghost) {
-            setGhostRaw((prev) => {
-              if (!prev) return null;
-              return {
-                ...prev,
-                cx: measured.ghost!.cx,
-                cy: measured.ghost!.cy,
-                scrollWidth: measured.ghost!.scrollWidth,
-                scrollHeight: measured.ghost!.scrollHeight,
-              };
-            });
-          }
-        };
-        if (opts?.flushSync) {
-          flushSync(apply);
-        } else {
-          apply();
-        }
-        return;
-      }
-
-      win.postMessage({
-        type: "GET_ANCHOR_POSITIONS",
-        requestId: "pins",
-        comments,
-      }, "*");
-    },
-    [topLevelComments, isFullscreen],
-  );
-
-  // Stable refs so scroll/mutation listeners always call the latest version
-  // without the listener effect needing to re-run (which detaches/re-attaches listeners).
-  const requestAnchorPositionsRef = useRef(requestAnchorPositions);
-  useEffect(() => {
-    requestAnchorPositionsRef.current = requestAnchorPositions;
-  }, [requestAnchorPositions]);
-  const anchorResolutionItemsRef = useRef(anchorResolutionItems);
-  useEffect(() => {
-    anchorResolutionItemsRef.current = anchorResolutionItems;
-  }, [anchorResolutionItems]);
-
-  // Listen for ANCHOR_POSITIONS response — store raw iframe coords, convert at render time
-  useEffect(() => {
-    function onMsg(e: MessageEvent) {
-      if (
-        e.data?.type === "ANCHOR_POSITIONS" &&
-        e.data.requestId === "pins" &&
-        e.data.positions &&
-        typeof e.data.positions === "object"
-      ) {
-        const raw = e.data.positions as Record<
-          string,
-          { left: number; top: number; width: number; height: number; scrollWidth: number; scrollHeight: number }
-        >;
-        const next: Record<string, { cx: number; cy: number; scrollWidth: number; scrollHeight: number }> = {};
-        for (const id of Object.keys(raw)) {
-          if (id === "__ghost__") continue;
-          const p = raw[id];
-          next[id] = {
-            cx: p.left + p.width / 2,
-            cy: p.top + p.height / 2,
-            scrollWidth: p.scrollWidth,
-            scrollHeight: p.scrollHeight,
-          };
-        }
-        setPinPositions(next);
-        const ghostPos = raw.__ghost__;
-        if (ghostPos) {
-          setGhostRaw((prev) => {
-            if (!prev) return null;
-            return {
-              ...prev,
-              cx: ghostPos.left + ghostPos.width / 2,
-              cy: ghostPos.top + ghostPos.height / 2,
-              scrollWidth: ghostPos.scrollWidth,
-              scrollHeight: ghostPos.scrollHeight,
-            };
-          });
-        }
-      }
-    }
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
-
-  // Detach function for iframe scroll/mutation listeners — stored in a ref
-  // so handleFrameReady (which fires reliably on every iframe load) can
-  // teardown the old listeners and attach fresh ones to the new document.
-  const iframeListenersDetachRef = useRef<(() => void) | undefined>(undefined);
-
-  const handleFrameReady = useCallback(() => {
-    // Teardown old listeners (previous document)
-    iframeListenersDetachRef.current?.();
-    iframeListenersDetachRef.current = undefined;
-
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const doc = iframe.contentDocument;
-    const win = iframe.contentWindow;
-    if (!doc || !win) return;
-
-    // Attach scroll + resize + mutation listeners to the new document
-    const onScrollOrResize = () => {
-      if (isSpaNavigatingRef.current || (window as any).__ebmsSpaNav) return;
-      requestAnchorPositionsRef.current({ flushSync: true });
-    };
-    doc.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true });
-    win.addEventListener("resize", onScrollOrResize);
-
-    let mutationRaf = 0;
-    const observer = new MutationObserver(() => {
-      cancelAnimationFrame(mutationRaf);
-      mutationRaf = requestAnimationFrame(() => {
-        if (isSpaNavigatingRef.current) return;
-        requestAnchorPositionsRef.current({ flushSync: true });
-        const items = anchorResolutionItemsRef.current;
-        if (items.length) {
-          const resolved: Record<string, boolean> = {};
-          for (const item of items) {
-            resolved[item.id] = !!resolveAnchorInDocument(doc, item.anchor);
-          }
-          setAnchorResolvedMap(resolved);
-        }
-      });
-    });
-    if (doc.body) {
-      observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
-    }
-
-    iframeListenersDetachRef.current = () => {
-      doc.removeEventListener("scroll", onScrollOrResize, { capture: true });
-      win.removeEventListener("resize", onScrollOrResize);
-      cancelAnimationFrame(mutationRaf);
-      observer.disconnect();
-    };
-
-    requestAnchorPositions();
-  }, [requestAnchorPositions]);
-
-  useEffect(() => {
-    if (isFullscreen) {
-      setPinPositions({});
-      return;
-    }
-    requestAnchorPositions();
-  }, [requestAnchorPositions, isFullscreen]);
-
-  // ResizeObserver on overlay to re-request on resize
-  useEffect(() => {
-    const el = overlayRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      requestAnchorPositions();
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [requestAnchorPositions]);
-
-  // ResizeObserver on iframe — detects sidebar open/close animation moving the iframe.
-  // Bumps iframeVersion to force re-render so raw coords get re-mapped with fresh rects.
-  useEffect(() => {
-    const el = iframeRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setIframeVersion((v) => v + 1));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Sidebar open/close can move iframe with transforms without resizing it.
-  // Watch its rect briefly after known layout shifts and bump version when it changes.
-  useEffect(() => {
-    if (isFullscreen) return;
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    let raf = 0;
-    let frame = 0;
-    let prev = iframe.getBoundingClientRect();
-    const maxFrames = 36; // ~600ms at 60fps; enough for sidebar animation
-    const step = () => {
-      frame += 1;
-      const next = iframe.getBoundingClientRect();
-      if (
-        Math.abs(next.left - prev.left) > 0.25 ||
-        Math.abs(next.top - prev.top) > 0.25 ||
-        Math.abs(next.width - prev.width) > 0.25 ||
-        Math.abs(next.height - prev.height) > 0.25
-      ) {
-        prev = next;
-        setIframeVersion((v) => v + 1);
-      }
-      if (frame < maxFrames) raf = window.requestAnimationFrame(step);
-    };
-    raf = window.requestAnimationFrame(step);
-    return () => window.cancelAnimationFrame(raf);
-  }, [commentsOpen, isFullscreen]);
-
-  // Cleanup iframe listeners on unmount or fullscreen
-  useEffect(() => {
-    if (isFullscreen) {
-      iframeListenersDetachRef.current?.();
-      iframeListenersDetachRef.current = undefined;
-    }
-    return () => {
-      iframeListenersDetachRef.current?.();
-      iframeListenersDetachRef.current = undefined;
-    };
-  }, [isFullscreen]);
-
-  // Convert raw iframe-viewport center coords → overlay-relative px at render time.
-  // Reads live rects so positions stay correct after any layout shift (sidebar, resize).
-  const rawToOverlay = useCallback(
-    (cx: number, cy: number, scrollWidth: number, scrollHeight: number): { x: number; y: number } => {
-      const overlay = overlayRef.current;
-      const iframe = iframeRef.current;
-      if (!overlay || !iframe) return { x: cx, y: cy };
-      const oRect = overlay.getBoundingClientRect();
-      const iRect = iframe.getBoundingClientRect();
-      const scaleX = scrollWidth > 0 ? iRect.width / scrollWidth : 1;
-      const scaleY = scrollHeight > 0 ? iRect.height / scrollHeight : 1;
-      const dx = iRect.left - oRect.left;
-      const dy = iRect.top - oRect.top;
-      return {
-        x: Math.round(cx * scaleX + dx),
-        y: Math.round(cy * scaleY + dy),
-      };
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [iframeVersion], // re-memoize when iframe moves
-  );
-
-  // Ghost pin derived from raw coords — updates whenever iframe moves
-  const ghostPin = useMemo(() => {
-    if (!ghostRaw) return null;
-    const { x, y } = rawToOverlay(ghostRaw.cx, ghostRaw.cy, ghostRaw.scrollWidth, ghostRaw.scrollHeight);
-    return { x, y, anchor: ghostRaw.anchor };
-  }, [ghostRaw, rawToOverlay]);
-
-  // Compute pin positions — converted fresh each render so sidebar moves are reflected
-  const pins: PinPosition[] = useMemo(() => {
-    if (!topLevelComments.length) return [];
-
-    const result: PinPosition[] = [];
-    let orphanedIndex = 0;
-
-    for (const c of topLevelComments) {
-      if (c.resolved) continue;
-      const pos = pinPositions[String(c.id)];
-      const hasAnchor = c.anchor && (c.anchor.selector || c.anchor.dataComment);
-      if (!hasAnchor) continue;
-
-      if (!pos) {
-        // Orphaned comments: no pin, sidebar only
-        orphanedIndex++;
-        continue;
-      }
-
-      const { x, y } = rawToOverlay(pos.cx, pos.cy, pos.scrollWidth, pos.scrollHeight);
-      result.push({ commentId: c.id, x, y, orphaned: false });
-    }
-    return result;
-  }, [topLevelComments, pinPositions, rawToOverlay]);
-
-  const sendHighlight = useCallback((a: Anchor | null) => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    if (a) win.postMessage({ type: "HIGHLIGHT_ELEMENT", anchor: a }, "*");
-    else win.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
-  }, []);
-
-  // Auto-open thread from URL ?comment= on initial load — waits for pins to be ready
+  // Auto-open thread from URL ?comment=
   useEffect(() => {
     if (consumedUrlCommentRef.current || !commentParam) return;
-    const pin = pins.find((p) => p.commentId === commentParam);
+    const pin = iframe.pins.find((p) => p.commentId === commentParam);
     if (!pin) return;
     consumedUrlCommentRef.current = true;
-    setActiveThreadId(commentParam);
-  }, [commentParam, pins]);
+    dispatch({ type: "SET_ACTIVE_THREAD", id: commentParam });
+  }, [commentParam, iframe.pins]);
 
-  // Handle ghost pin position — store raw iframe coords
+  // Handle ghost pin position
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (e.data?.type === "MATCH_EXISTING_THREAD_RESULT") {
@@ -623,12 +1011,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           typeof e.data.commentId === "string" && e.data.commentId.trim() ? e.data.commentId : null;
         if (existingThreadId) {
           pendingGhostAnchorRef.current = null;
-          setGhostRaw(null);
+          dispatch({ type: "SET_GHOST", ghost: null });
           const existing = topLevelComments.find((c) => String(c.id) === existingThreadId);
-          if (existing) sendHighlight(existing.anchor as Anchor);
-          // Defer to let ContextMenu DismissableLayer finish teardown before opening Popover
+          if (existing) iframe.sendHighlight(existing.anchor as Anchor);
           setTimeout(() => {
-            setActiveThreadId(Number(existingThreadId));
+            dispatch({ type: "SET_ACTIVE_THREAD", id: Number(existingThreadId) });
           }, 150);
           return;
         }
@@ -653,19 +1040,18 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           scrollWidth: number; scrollHeight: number;
         };
         pendingGhostAnchorRef.current = null;
-        setGhostRaw({
+        dispatch({ type: "SET_GHOST", ghost: {
           cx: pos.left + pos.width / 2,
           cy: pos.top + pos.height / 2,
           scrollWidth: pos.scrollWidth,
           scrollHeight: pos.scrollHeight,
           anchor,
-        });
+        }});
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [topLevelComments, sendHighlight]);
-
+  }, [topLevelComments, iframe.sendHighlight]);
 
   useEffect(() => {
     function onFullscreenChange() {
@@ -675,172 +1061,65 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
+  // Fullscreen enter — single dispatch replaces multi-setState
   useEffect(() => {
     if (!isFullscreen) return;
-    setGhostRaw(null);
-    setActiveThreadId(null);
-    setCommentsOpen(false);
-    setMobileSheet(false);
-    sendHighlight(null);
-  }, [isFullscreen, sendHighlight]);
+    dispatch({ type: "FULLSCREEN_ENTER" });
+    iframe.sendHighlight(null);
+  }, [isFullscreen, iframe.sendHighlight]);
 
-  async function onSubmitNewComment(body: string) {
-    if (!fileId) { toast.error("Select a file first"); return; }
-    if (!selectedVersionId) { toast.error("No version selected"); return; }
-    const tempId = -Date.now();
-    const anchor = ghostRaw?.anchor ?? emptyAnchor();
-    const tagsToAdd = selectedTagIds;
-    const optimisticTags = (tagList ?? []).filter((t) => tagsToAdd.includes(t.id));
-    setGhostRaw(null);
-    setSelectedTagIds([]);
-    setActiveThreadId(tempId);
-    try {
-      const row = await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId: selectedVersionId!,
-        body,
-        anchor,
-        parentId: undefined,
-        _tempId: tempId,
-        _tags: optimisticTags,
-      });
-      for (const tagId of tagsToAdd) {
-        await addTag.mutateAsync({ commentId: row.id, tagId });
-      }
-      setActiveThreadId((prev) => (prev === tempId ? row.id : prev));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to post");
-      setActiveThreadId(null);
-    }
-  }
+  const processAnchorSelected = useCallback((anchor: Anchor) => {
+    dispatch({ type: "SET_GHOST", ghost: null });
+    pendingGhostAnchorRef.current = anchor;
+    const requestId = `match-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    pendingMatchRequestIdRef.current = requestId;
+    const topLevelCommentsWithAnchors = topLevelComments
+      .filter((c) => c.anchor && (c.anchor.selector || c.anchor.dataComment))
+      .map((c) => ({ id: String(c.id), anchor: c.anchor }));
+    const win = iframeRef.current?.contentWindow;
+    win?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
+    win?.postMessage({
+      type: "MATCH_EXISTING_THREAD",
+      requestId,
+      selectedAnchor: anchor,
+      comments: topLevelCommentsWithAnchors,
+    }, "*");
+  }, [topLevelComments]);
 
-  async function onResolve(id: number, resolved: boolean) {
-    try {
-      await patchComment.mutateAsync({ id, resolved });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Update failed");
-    }
-  }
+  // Comment handlers hook
+  const commentHandlers = useViewerComments({
+    fileId,
+    selectedVersionId,
+    topLevelComments,
+    ghostRaw,
+    activeThreadId,
+    dispatch,
+    createComment,
+    patchComment,
+    deleteComment,
+    addTag,
+    tagList,
+    selectedTagIds,
+    setSelectedTagIds,
+  });
 
-  async function onDelete(id: number) {
-    if (activeThreadId === id) setActiveThreadId(null);
-    try {
-      await deleteComment.mutateAsync(id);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
-    }
-  }
-
-  async function onReply(commentId: number, body: string) {
-    if (!fileId) return;
-    const parent = topLevelComments.find((c) => c.id === commentId);
-    const versionId = selectedVersionId;
-    if (!versionId) return;
-    try {
-      await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId,
-        body,
-        anchor: parent?.anchor ?? emptyAnchor(),
-        parentId: commentId,
-      });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to reply");
-    }
-  }
-
-  async function onNewCommentFromThread(sourceCommentId: number, body: string) {
-    if (!fileId) return;
-    const source = topLevelComments.find((c) => c.id === sourceCommentId);
-    const versionId = selectedVersionId;
-    if (!versionId) return;
-    try {
-      await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId,
-        body,
-        anchor: source?.anchor ?? emptyAnchor(),
-        parentId: undefined,
-      });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to post");
-    }
-  }
+  // DnD hook
+  const dnd = useViewerDnd({
+    iframeRef,
+    topLevelComments,
+    patchComment,
+    processAnchorSelected,
+  });
 
   function onSelectThread(commentId: number) {
-    setGhostRaw(null);
+    dispatch({ type: "SET_GHOST", ghost: null });
     pendingGhostAnchorRef.current = null;
-    setActiveThreadId((prev) => (prev === commentId ? null : commentId));
+    dispatch({ type: "SET_ACTIVE_THREAD", id: activeThreadId === commentId ? null : commentId });
     const c = topLevelComments.find((x) => x.id === commentId);
-    if (c) sendHighlight(c.anchor as Anchor);
-    if (isMobile) setMobileSheet(true);
-    else setCommentsOpen(true);
+    if (c) iframe.sendHighlight(c.anchor as Anchor);
+    if (isMobile) dispatch({ type: "SET_MOBILE_SHEET", open: true });
+    else dispatch({ type: "SET_COMMENTS_OPEN", open: true });
   }
-
-  function onReLink(id: number) {
-    setReLinkCommentId(id);
-  }
-
-  async function onUnlink(id: number) {
-    setActiveThreadId(null);
-    try {
-      await patchComment.mutateAsync({ id, anchor: null });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    }
-  }
-
-  // Track pointer position + iframe hover highlight during re-link drag
-  useEffect(() => {
-    if (!reLinkCommentId) {
-      pointerPosRef.current = null;
-      return;
-    }
-    function onMove(e: PointerEvent) {
-      pointerPosRef.current = { x: e.clientX, y: e.clientY };
-      const iframe = iframeRef.current;
-      if (!iframe) return;
-      const rect = iframe.getBoundingClientRect();
-      const over = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-      setIsOverIframe(over);
-      if (over) {
-        iframe.contentWindow?.postMessage({
-          type: "HIGHLIGHT_AT_POINT",
-          fractionX: (e.clientX - rect.left) / rect.width,
-          fractionY: (e.clientY - rect.top) / rect.height,
-        }, "*");
-      } else {
-        iframe.contentWindow?.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
-      }
-    }
-    window.addEventListener("pointermove", onMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onMove);
-  }, [reLinkCommentId]);
-
-  // Handle ELEMENT_PICKED_AT from iframe bridge (uses refs to avoid stale closures)
-  useEffect(() => {
-    function onMsg(e: MessageEvent) {
-      if (e.data?.type !== "ELEMENT_PICKED_AT") return;
-      const relinkId = reLinkCommentIdRef.current;
-      if (relinkId !== null) {
-        reLinkCommentIdRef.current = null;
-        setReLinkCommentId(null);
-        setIsOverIframe(false);
-        iframeRef.current?.contentWindow?.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
-        if (!e.data.anchor) { toast.error("No element at that position"); return; }
-        void patchCommentRef.current.mutateAsync({ id: relinkId, anchor: e.data.anchor as Anchor })
-          .catch((err: Error) => toast.error(err.message));
-        return;
-      }
-      if (pendingContextMenuFractionRef.current !== null) {
-        pendingContextMenuFractionRef.current = null;
-        if (!e.data.anchor) { toast.error("No element at that position"); return; }
-        processAnchorSelected(e.data.anchor as Anchor);
-      }
-    }
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, [processAnchorSelected]);
 
   function copyShare() {
     void navigator.clipboard.writeText(window.location.href);
@@ -860,119 +1139,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
   }
 
-  const processAnchorSelected = useCallback((anchor: Anchor) => {
-    setGhostRaw(null);
-    pendingGhostAnchorRef.current = anchor;
-    const requestId = `match-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    pendingMatchRequestIdRef.current = requestId;
-    const topLevelCommentsWithAnchors = topLevelComments
-      .filter((c) => c.anchor && (c.anchor.selector || c.anchor.dataComment))
-      .map((c) => ({ id: String(c.id), anchor: c.anchor }));
-    const win = iframeRef.current?.contentWindow;
-    win?.postMessage({ type: "SET_CURSOR", cursor: "" }, "*");
-    win?.postMessage({
-      type: "MATCH_EXISTING_THREAD",
-      requestId,
-      selectedAnchor: anchor,
-      comments: topLevelCommentsWithAnchors,
-    }, "*");
-  }, [topLevelComments]);
-  useEffect(() => {
-    function onMsg(e: MessageEvent) {
-      if (e.data?.type !== "CONTEXT_MENU") return;
-      const iframe = iframeRef.current;
-      if (!iframe || isFullscreen) return;
-      const rect = iframe.getBoundingClientRect();
-      const x = rect.left + (e.data.fractionX as number) * rect.width;
-      const y = rect.top + (e.data.fractionY as number) * rect.height;
-      pendingContextMenuFractionRef.current = {
-        fX: e.data.fractionX as number,
-        fY: e.data.fractionY as number,
-      };
-      contextMenuTriggerRef.current?.dispatchEvent(
-        new MouseEvent("contextmenu", {
-          bubbles: true, cancelable: true, view: window,
-          clientX: Math.round(x), clientY: Math.round(y),
-        })
-      );
-    }
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, [isFullscreen]);
-
-  useEffect(() => {
-    function onMsg(e: MessageEvent) {
-      if (e.data?.type === "PAGE_NAV") {
-        isSpaNavigatingRef.current = true;
-        clearTimeout(spaNavTimeoutRef.current);
-        spaNavTimeoutRef.current = setTimeout(() => {
-          if (isSpaNavigatingRef.current) {
-            isSpaNavigatingRef.current = false;
-            try { (window as any).__ebmsSpaNav = false; } catch {}
-            requestAnchorPositions({ flushSync: true });
-          }
-        }, 3000);
-        flushSync(() => {
-          setPinPositions({});
-          setAnchorResolvedMap({});
-          setActiveThreadId(null);
-          setGhostRaw(null);
-        });
-        return;
-      }
-      if (e.data?.type === "PAGE_CHANGE") {
-        isSpaNavigatingRef.current = false;
-        clearTimeout(spaNavTimeoutRef.current);
-        requestAnchorPositions({ flushSync: true });
-        // Re-resolve which anchors exist on the new page
-        const doc = iframeRef.current?.contentDocument;
-        if (doc && anchorResolutionItems.length) {
-          const resolved: Record<string, boolean> = {};
-          for (const item of anchorResolutionItems) {
-            resolved[item.id] = !!resolveAnchorInDocument(doc, item.anchor);
-          }
-          flushSync(() => setAnchorResolvedMap(resolved));
-        }
-      }
-    }
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, [requestAnchorPositions, anchorResolutionItems]);
-
-  async function onSubmitDirectComment(body: string) {
-    if (!fileId) { toast.error("Select a file first"); return; }
-    if (!selectedVersionId) { toast.error("No version selected"); return; }
-    const tempId = -Date.now();
-    const tagsToAdd = selectedTagIds;
-    const optimisticTags = (tagList ?? []).filter((t) => tagsToAdd.includes(t.id));
-    setSelectedTagIds([]);
-    setActiveThreadId(tempId);
-    try {
-      const row = await createComment.mutateAsync({
-        fileId: Number(fileId),
-        versionId: selectedVersionId,
-        body,
-        anchor: emptyAnchor(),
-        parentId: undefined,
-        _tempId: tempId,
-        _tags: optimisticTags,
-      });
-      for (const tagId of tagsToAdd) await addTag.mutateAsync({ commentId: row.id, tagId });
-      setActiveThreadId((prev) => (prev === tempId ? row.id : prev));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to post");
-      setActiveThreadId(null);
-    }
-  }
-
-  async function onEditComment(id: number, body: string) {
-    try {
-      await patchComment.mutateAsync({ id, body });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Edit failed");
-    }
-  }
-
   const sidebarProps = {
     comments: topLevelComments,
     currentUser: user,
@@ -980,58 +1146,29 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     loading: commentsLoading,
     tagOptions,
     onAddComment: () => {},
-    onSubmitDirectComment,
+    onSubmitDirectComment: commentHandlers.onSubmitDirectComment,
     addCommentDisabled: false,
-    onResolve,
+    onResolve: commentHandlers.onResolve,
     onHover: () => {},
     activeThreadId,
     onSelectThread,
     anchorResolvedMap,
     versions: fileVersionsList,
-    onReLink,
-    onUnlink,
-    onEditComment,
-    onDeleteComment: onDelete,
+    onReLink: dnd.onReLink,
+    onUnlink: commentHandlers.onUnlink,
+    onEditComment: commentHandlers.onEditComment,
+    onDeleteComment: commentHandlers.onDelete,
   };
 
   const showThreadPopover = Boolean(activeThreadId);
-  const showComposePopover = Boolean(ghostPin) && !showThreadPopover;
-
-  function onDragStart({ active }: { active: { data: { current?: { commentId?: number } } } }) {
-    const commentId = active.data.current?.commentId;
-    if (commentId) setReLinkCommentId(commentId);
-  }
-
-  function onDragEnd() {
-    const pos = pointerPosRef.current;
-    const iframe = iframeRef.current;
-    iframeRef.current?.contentWindow?.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
-    setIsOverIframe(false);
-
-    if (pos && iframe) {
-      const rect = iframe.getBoundingClientRect();
-      if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) {
-        iframe.contentWindow?.postMessage({
-          type: "PICK_ELEMENT_AT",
-          fractionX: (pos.x - rect.left) / rect.width,
-          fractionY: (pos.y - rect.top) / rect.height,
-        }, "*");
-        // reLinkCommentId cleared by ELEMENT_PICKED_AT handler
-        return;
-      }
-    }
-    setReLinkCommentId(null);
-    pointerPosRef.current = null;
-  }
-
-  const draggedComment = reLinkCommentId ? topLevelComments.find((c) => c.id === reLinkCommentId) : null;
+  const showComposePopover = Boolean(iframe.ghostPin) && !showThreadPopover;
 
   return (
-    <DndContext sensors={dndSensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext sensors={dnd.dndSensors} onDragStart={dnd.onDragStart} onDragEnd={dnd.onDragEnd}>
     <TooltipProvider delayDuration={300}>
       <SidebarProvider
         open={commentsOpen}
-        onOpenChange={setCommentsOpen}
+        onOpenChange={(open) => dispatch({ type: "SET_COMMENTS_OPEN", open })}
         style={{ "--sidebar-width": "20rem" } as CSSProperties}
       >
         <SidebarInset className="h-dvh overflow-hidden bg-background">
@@ -1075,10 +1212,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                         projectId={projectId}
                         fileId={fileId}
                         selectedVersionId={selectedVersionId}
-                        onSelectVersion={setSelectedVersionId}
+                        onSelectVersion={(id) => dispatch({ type: "SET_VERSION", id })}
                         canManage={canManageVersions}
                         forceOpen={forceOpenVersionSelector}
-                        onForceOpenHandled={() => setForceOpenVersionSelector(false)}
+                        onForceOpenHandled={() => dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: false })}
                       />
                     ) : null}
                   </div>
@@ -1096,7 +1233,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     <TooltipContent side="bottom">Fullscreen</TooltipContent>
                   </Tooltip>
                   {isMobile ? (
-                    <Sheet open={mobileSheet} onOpenChange={setMobileSheet}>
+                    <Sheet open={mobileSheet} onOpenChange={(open) => dispatch({ type: "SET_MOBILE_SHEET", open })}>
                       <SheetTrigger asChild>
                         <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-foreground lg:hidden">
                           <MessageCircle className="size-4" />
@@ -1105,7 +1242,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       <SheetContent side="bottom" className="h-[85dvh] p-0">
                         <CommentsSidebar
                           {...sidebarProps}
-                          onClose={() => setMobileSheet(false)}
+                          onClose={() => dispatch({ type: "SET_MOBILE_SHEET", open: false })}
                         />
                       </SheetContent>
                     </Sheet>
@@ -1116,7 +1253,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                           variant="ghost"
                           size="icon"
                           className="hidden size-7 text-muted-foreground hover:text-foreground lg:inline-flex"
-                          onClick={() => setCommentsOpen((prev) => !prev)}
+                          onClick={() => dispatch({ type: "TOGGLE_COMMENTS_OPEN" })}
                           aria-label="Toggle comments"
                         >
                           <MessageCircle className="size-3.5" />
@@ -1178,7 +1315,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={() => setCommentsOpen(true)}
+                    onClick={() => dispatch({ type: "SET_COMMENTS_OPEN", open: true })}
                     className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-2 shadow-lg backdrop-blur-sm transition-all hover:bg-background hover:shadow-xl"
                   >
                     <MessageCircle className="size-4 text-muted-foreground" />
@@ -1199,7 +1336,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               ) : (
                 <div className={cn(
                   "relative flex min-h-0 flex-1 flex-col rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08),0_8px_32px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] transition-shadow duration-150",
-                  isOverIframe && "ring-2 ring-primary/40 ring-offset-1",
+                  dnd.isOverIframe && "ring-2 ring-primary/40 ring-offset-1",
                 )}>
                   <HtmlFrame
                     ref={iframeRef}
@@ -1210,29 +1347,29 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     interactionMode="browsing"
                     anchorResolutionItems={anchorResolutionItems}
                     onAnchorResolution={handleAnchorResolution}
-                    onFrameReady={handleFrameReady}
+                    onFrameReady={iframe.handleFrameReady}
                   />
 
-                  {/* Re-link overlay — captures pointer events so dnd-kit tracks position over iframe */}
-                  {reLinkCommentId !== null ? (
+                  {/* Re-link overlay */}
+                  {dnd.reLinkCommentId !== null ? (
                     <div className="absolute inset-0 z-[60]" style={{ pointerEvents: "all", cursor: "copy" }} />
                   ) : null}
 
-                  {/* Pin overlay — sits exactly on top of the iframe artboard */}
+                  {/* Pin overlay */}
                   {!isFullscreen && !htmlLoading && !htmlError && html ? (
                     <div
                       ref={overlayRef}
                       className="pointer-events-none absolute inset-0 overflow-hidden"
                     >
                       {/* Ghost pin for new comment */}
-                      {showComposePopover && ghostPin ? (
+                      {showComposePopover && iframe.ghostPin ? (
                         <>
-                          <GhostPin x={ghostPin.x} y={ghostPin.y} />
+                          <GhostPin x={iframe.ghostPin.x} y={iframe.ghostPin.y} />
                           <Popover open={showComposePopover}>
                             <PopoverAnchor asChild>
                               <div
                                 className="pointer-events-none absolute z-40"
-                                style={{ left: ghostPin.x, top: ghostPin.y, width: 1, height: 1 }}
+                                style={{ left: iframe.ghostPin.x, top: iframe.ghostPin.y, width: 1, height: 1 }}
                               />
                             </PopoverAnchor>
                             <PopoverContent
@@ -1248,8 +1385,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                                 tagOptions={tagOptions}
                                 selectedTagIds={selectedTagIds}
                                 onToggleTag={toggleTag}
-                                onSubmit={onSubmitNewComment}
-                                onCancel={() => setGhostRaw(null)}
+                                onSubmit={commentHandlers.onSubmitNewComment}
+                                onCancel={() => dispatch({ type: "SET_GHOST", ghost: null })}
                                 members={mentionMembers}
                               />
                             </PopoverContent>
@@ -1258,7 +1395,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       ) : null}
 
                       {/* Comment pins */}
-                      {pins.map((pin, pinIndex) => {
+                      {iframe.pins.map((pin, pinIndex) => {
                         const comment = comments?.find((c) => c.id === pin.commentId);
                         if (!comment) return null;
                         const replyCount = comment.replies?.length ?? 0;
@@ -1274,20 +1411,19 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                             replyCount={replyCount}
                             index={pinIndex}
                             onClick={() => {
-                              setGhostRaw(null); // dismiss compose if open
+                              dispatch({ type: "SET_GHOST", ghost: null });
                               pendingGhostAnchorRef.current = null;
-                              setActiveThreadId((prev) => (prev === pin.commentId ? null : pin.commentId));
-                              sendHighlight(comment.anchor as Anchor);
+                              dispatch({ type: "SET_ACTIVE_THREAD", id: activeThreadId === pin.commentId ? null : pin.commentId });
+                              iframe.sendHighlight(comment.anchor as Anchor);
                             }}
                           />
                         );
                       })}
 
-                      {/* Active thread popover — rendered once, sibling to pins so position is relative to overlay */}
+                      {/* Active thread popover */}
                       {(() => {
-                        // Update ref while thread is active so we have data during close animation
                         if (activeThreadId) {
-                          const activePin = pins.find((p) => p.commentId === activeThreadId);
+                          const activePin = iframe.pins.find((p) => p.commentId === activeThreadId);
                           const activeComment = topLevelComments.find((c) => c.id === activeThreadId);
                           if (activePin && activeComment) {
                             const activeAnchor = activeComment.anchor as Anchor | undefined;
@@ -1309,7 +1445,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                             key={display.threadId}
                             open={showThreadPopover}
                             onOpenChange={(open) => {
-                              if (!open) setActiveThreadId(null);
+                              if (!open) dispatch({ type: "SET_ACTIVE_THREAD", id: null });
                             }}
                           >
                             <PopoverAnchor asChild>
@@ -1332,13 +1468,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                                 currentUser={user}
                                 canComment={true}
                                 members={mentionMembers}
-                                onClose={() => setActiveThreadId(null)}
-                                onResolve={onResolve}
-                                onDelete={onDelete}
-                                onReply={onReply}
-                                onNewComment={onNewCommentFromThread}
-                                onEditMessage={onEditComment}
-                                onUnlink={canManageVersions ? onUnlink : undefined}
+                                onClose={() => dispatch({ type: "SET_ACTIVE_THREAD", id: null })}
+                                onResolve={commentHandlers.onResolve}
+                                onDelete={commentHandlers.onDelete}
+                                onReply={commentHandlers.onReply}
+                                onNewComment={commentHandlers.onNewCommentFromThread}
+                                onEditMessage={commentHandlers.onEditComment}
+                                onUnlink={canManageVersions ? commentHandlers.onUnlink : undefined}
                                 isOrphaned={display.pin.orphaned}
                               />
                             </PopoverContent>
@@ -1364,16 +1500,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         ) : null}
       </SidebarProvider>
       <DragOverlay dropAnimation={null}>
-        {draggedComment ? (
+        {dnd.draggedComment ? (
           <div className="w-56 rounded-xl border border-primary/30 bg-background px-4 py-3 shadow-xl opacity-90">
-            <p className="truncate text-[13px] text-foreground">{draggedComment.body}</p>
+            <p className="truncate text-[13px] text-foreground">{dnd.draggedComment.body}</p>
           </div>
         ) : null}
       </DragOverlay>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <span
-            ref={contextMenuTriggerRef}
+            ref={dnd.contextMenuTriggerRef}
             className="pointer-events-none fixed"
             style={{ left: 0, top: 0, width: 0, height: 0 }}
             aria-hidden
@@ -1382,7 +1518,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         <ContextMenuContent>
           <ContextMenuItem
             onClick={() => {
-              const f = pendingContextMenuFractionRef.current;
+              const f = dnd.pendingContextMenuFractionRef.current;
               if (!f) return;
               iframeRef.current?.contentWindow?.postMessage({
                 type: "PICK_ELEMENT_AT",

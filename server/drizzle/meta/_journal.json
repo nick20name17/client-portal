@@ -8,6 +8,13 @@
       "when": 1774969681060,
       "tag": "0000_bizarre_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775565931754,
+      "tag": "0001_add-project-archived-at",
+      "breakpoints": true
     }
   ]
 }

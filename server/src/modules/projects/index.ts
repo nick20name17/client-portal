@@ -16,6 +16,10 @@ export const projects = new Elysia({
     response: { 200: ProjectModelSchema.listResponse },
     auth: true,
   })
+  .get("/archived", ({ user }) => ProjectService.listArchived(user), {
+    response: { 200: ProjectModelSchema.listResponse },
+    auth: true,
+  })
   .post("/", ({ user, body }) => ProjectService.create(user, body), {
     body: ProjectModelSchema.create,
     response: { 200: ProjectModelSchema.select },
@@ -36,6 +40,16 @@ export const projects = new Elysia({
       auth: true,
     },
   )
+  .post("/:id/archive", ({ user, params }) => ProjectService.archive(user, params.id), {
+    params: ProjectModelSchema.idParams,
+    response: { 200: ProjectModelSchema.ok },
+    auth: true,
+  })
+  .post("/:id/unarchive", ({ user, params }) => ProjectService.unarchive(user, params.id), {
+    params: ProjectModelSchema.idParams,
+    response: { 200: ProjectModelSchema.ok },
+    auth: true,
+  })
   .delete("/:id", ({ user, params }) => ProjectService.delete(user, params.id), {
     params: ProjectModelSchema.idParams,
     response: { 200: ProjectModelSchema.ok },

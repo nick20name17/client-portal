@@ -104,6 +104,7 @@ export const ProjectService = {
         .select({ project: projects, company: companies })
         .from(projects)
         .innerJoin(companies, eq(projects.companyId, companies.id))
+        .where(isNull(projects.archivedAt))
         .orderBy(projects.createdAt);
       return enrichProjectRows(rows);
     }
@@ -112,7 +113,7 @@ export const ProjectService = {
       .from(projects)
       .innerJoin(companies, eq(projects.companyId, companies.id))
       .innerJoin(projectMembers, eq(projects.id, projectMembers.projectId))
-      .where(eq(projectMembers.userId, user.id))
+      .where(and(eq(projectMembers.userId, user.id), isNull(projects.archivedAt)))
       .orderBy(projects.createdAt);
     return enrichProjectRows(rows);
   },
@@ -181,6 +182,45 @@ export const ProjectService = {
       ...row,
       company: comp ? { id: comp.id, name: comp.name } : null,
     };
+  },
+
+  async listArchived(user: SessionUser): Promise<ProjectModel["listResponse"]> {
+    if (user.role !== "admin") forbidden();
+    const rows = await db
+      .select({ project: projects, company: companies })
+      .from(projects)
+      .innerJoin(companies, eq(projects.companyId, companies.id))
+      .where(sql`${projects.archivedAt} is not null`)
+      .orderBy(projects.createdAt);
+    return enrichProjectRows(rows);
+  },
+
+  async archive(user: SessionUser, id: string) {
+    if (user.role !== "admin") forbidden();
+    const [row] = await db
+      .update(projects)
+      .set({ archivedAt: new Date() })
+      .where(and(eq(projects.id, id), isNull(projects.archivedAt)))
+      .returning();
+    if (!row)
+      throw status(404, {
+        error: "Not found",
+      } satisfies ProjectModel["notFound"]);
+    return { ok: true as const };
+  },
+
+  async unarchive(user: SessionUser, id: string) {
+    if (user.role !== "admin") forbidden();
+    const [row] = await db
+      .update(projects)
+      .set({ archivedAt: null })
+      .where(and(eq(projects.id, id), sql`${projects.archivedAt} is not null`))
+      .returning();
+    if (!row)
+      throw status(404, {
+        error: "Not found",
+      } satisfies ProjectModel["notFound"]);
+    return { ok: true as const };
   },
 
   async delete(user: SessionUser, id: string) {

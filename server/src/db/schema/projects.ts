@@ -18,6 +18,7 @@ export const projects = pgTable("projects", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
+  archivedAt: timestamp("archived_at"),
 });
 
 export const projectFiles = pgTable(

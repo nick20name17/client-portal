@@ -1,7 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useReducer } from "react";
+import { useMemo, useReducer, useState } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   CheckCircle2,
+  ChevronDown,
   FolderKanban,
   FolderOpen,
   MessageCircle,
@@ -58,10 +61,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompanies } from "@/api/companies/query";
 import {
+  useArchiveProject,
+  useArchivedProjects,
   useCreateProject,
   useDeleteProject,
   useProjects,
   useSyncProjectFiles,
+  useUnarchiveProject,
   useUpdateProject,
 } from "@/api/projects/query";
 import { useStats } from "@/api/stats/query";
@@ -100,6 +106,7 @@ type DialogState = {
   editing: Project | null;
   form: FormState;
   deleteTarget: Project | null;
+  archiveTarget: Project | null;
   membersProjectId: number | null;
 };
 
@@ -108,6 +115,7 @@ const initialDialogState: DialogState = {
   editing: null,
   form: { name: "", description: "", repoUrl: "", companyId: "" },
   deleteTarget: null,
+  archiveTarget: null,
   membersProjectId: null,
 };
 
@@ -117,6 +125,7 @@ type DialogAction =
   | { type: "CLOSE_DIALOG" }
   | { type: "SET_FORM"; payload: Partial<FormState> }
   | { type: "SET_DELETE_TARGET"; payload: Project | null }
+  | { type: "SET_ARCHIVE_TARGET"; payload: Project | null }
   | { type: "SET_MEMBERS_PROJECT"; payload: number | null };
 
 function dialogReducer(state: DialogState, action: DialogAction): DialogState {
@@ -146,6 +155,8 @@ function dialogReducer(state: DialogState, action: DialogAction): DialogState {
       return { ...state, form: { ...state.form, ...action.payload } };
     case "SET_DELETE_TARGET":
       return { ...state, deleteTarget: action.payload };
+    case "SET_ARCHIVE_TARGET":
+      return { ...state, archiveTarget: action.payload };
     case "SET_MEMBERS_PROJECT":
       return { ...state, membersProjectId: action.payload };
     default:
@@ -295,6 +306,35 @@ function ProjectFormDialog({
   );
 }
 
+function ArchiveProjectDialog({
+  target,
+  onClose,
+  onConfirm,
+}: {
+  target: Project | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog open={!!target} onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Archive &ldquo;{target?.name}&rdquo;?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The project will be hidden from all users. You can restore it later.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>
+            Archive project
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function DeleteProjectDialog({
   target,
   onClose,
@@ -315,10 +355,7 @@ function DeleteProjectDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={onConfirm}
-          >
+          <AlertDialogAction onClick={onConfirm}>
             Delete project
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -342,12 +379,17 @@ function DashboardPage() {
   const { data: stats, isPending: statsLoading } = useStats({ enabled: isAdmin });
   const { data: companies } = useCompanies({ enabled: isAdmin });
 
+  const { data: archivedProjects } = useArchivedProjects({ enabled: isAdmin });
+
   const create = useCreateProject();
   const update = useUpdateProject();
+  const archive = useArchiveProject();
+  const unarchive = useUnarchiveProject();
   const remove = useDeleteProject();
   const sync = useSyncProjectFiles();
 
   const [state, dispatch] = useReducer(dialogReducer, initialDialogState);
+  const [showArchived, setShowArchived] = useState(false);
 
   const resolvedPct = useMemo(() => {
     if (!stats || stats.totalComments === 0) return 0;
@@ -407,6 +449,26 @@ function DashboardPage() {
     }
     if (createdId !== null) {
       void syncProject(sync, createdId);
+    }
+  }
+
+  async function confirmArchive() {
+    if (!state.archiveTarget) return;
+    try {
+      await archive.mutateAsync(state.archiveTarget.id);
+      toast.success("Project archived");
+      dispatch({ type: "SET_ARCHIVE_TARGET", payload: null });
+    } catch (e) {
+      toast.error(apiErrorMsg(e, "Archive failed"));
+    }
+  }
+
+  async function handleUnarchive(id: number) {
+    try {
+      await unarchive.mutateAsync(id);
+      toast.success("Project restored");
+    } catch (e) {
+      toast.error(apiErrorMsg(e, "Restore failed"));
     }
   }
 
@@ -504,6 +566,12 @@ function DashboardPage() {
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
+                            onClick={() => dispatch({ type: "SET_ARCHIVE_TARGET", payload: p })}
+                          >
+                            <Archive className="size-4" />
+                            Archive
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             variant="destructive"
                             onClick={() => dispatch({ type: "SET_DELETE_TARGET", payload: p })}
                           >
@@ -521,6 +589,56 @@ function DashboardPage() {
         </div>
       )}
 
+      {isAdmin && archivedProjects && archivedProjects.length > 0 ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowArchived((v) => !v)}
+            className="flex items-center gap-1.5 text-[13px] font-medium text-text-secondary hover:text-foreground transition-colors"
+          >
+            <ChevronDown className={`size-3.5 transition-transform ${showArchived ? "" : "-rotate-90"}`} />
+            Archived ({archivedProjects.length})
+          </button>
+          {showArchived ? (
+            <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {archivedProjects.map((p) => (
+                <div key={p.id} className="relative group/card opacity-60 hover:opacity-100 transition-opacity">
+                  <ProjectPreviewCard project={p} />
+                  <div className="absolute right-2 top-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="icon-sm"
+                          className="size-7 rounded-md bg-background/90 backdrop-blur-sm shadow-sm"
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          <MoreHorizontal className="size-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => void handleUnarchive(p.id)}>
+                          <ArchiveRestore className="size-4" />
+                          Restore
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => dispatch({ type: "SET_DELETE_TARGET", payload: p })}
+                        >
+                          <Trash2 className="size-4" />
+                          Delete permanently
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <ProjectFormDialog
         open={state.dialogOpen}
         editing={state.editing}
@@ -537,6 +655,12 @@ function DashboardPage() {
         projectId={state.membersProjectId}
         open={!!state.membersProjectId}
         onOpenChange={(o) => !o && dispatch({ type: "SET_MEMBERS_PROJECT", payload: null })}
+      />
+
+      <ArchiveProjectDialog
+        target={state.archiveTarget}
+        onClose={() => dispatch({ type: "SET_ARCHIVE_TARGET", payload: null })}
+        onConfirm={() => void confirmArchive()}
       />
 
       <DeleteProjectDialog
