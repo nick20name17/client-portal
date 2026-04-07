@@ -9,7 +9,7 @@ export async function getProjectOrNull(projectId: string) {
   return rows[0] ?? null;
 }
 
-export async function isProjectMember(userId: string, projectId: string): Promise<boolean> {
+async function isProjectMember(userId: string, projectId: string): Promise<boolean> {
   const rows = await db
     .select({ id: projectMembers.id })
     .from(projectMembers)

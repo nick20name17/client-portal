@@ -3,11 +3,11 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import type { CreateCompanyPayload, UpdateCompanyPayload } from "./schema";
 import { companiesService } from "./service";
 
-export const COMPANY_KEYS = {
+const COMPANY_KEYS = {
   all: () => ["companies"] as const,
 };
 
-export const companiesQuery = () =>
+const companiesQuery = () =>
   queryOptions({ queryKey: COMPANY_KEYS.all(), queryFn: companiesService.getAll });
 
 export function useCompanies(options?: { enabled?: boolean }) {

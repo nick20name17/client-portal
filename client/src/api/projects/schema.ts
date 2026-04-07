@@ -1,5 +1,3 @@
-export type { Project, ProjectFile, ProjectMemberRow } from "@/types";
-
 export interface CreateProjectPayload {
   name: string;
   description?: string;

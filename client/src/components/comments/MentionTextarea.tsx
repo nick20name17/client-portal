@@ -94,7 +94,7 @@ interface Props {
   placeholderClassName?: string;
   disabled?: boolean;
   className?: string;
-  autoFocus?: boolean;
+  initialFocus?: boolean;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   onBlur?: (e: React.FocusEvent) => void;
 }
@@ -155,7 +155,7 @@ function MentionDropdown({ dd, onSelect, activeIdx }: {
 
 export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
   function MentionTextarea(
-    { value, onValueChange, members = [], rows = 3, placeholder, placeholderClassName, disabled, className, autoFocus, onKeyDown, onBlur },
+    { value, onValueChange, members = [], rows = 3, placeholder, placeholderClassName, disabled, className, initialFocus, onKeyDown, onBlur },
     outerRef,
   ) {
     const editorRef = useRef<HTMLDivElement>(null);
@@ -166,7 +166,7 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
     // Pending mention state — stored outside React state to avoid stale closures
     const pendingRef = useRef<MentionPendingState | null>(null);
     const [dd, setDd] = useState<DropdownState | null>(null);
-    const [hasContent, setHasContent] = useState(!!value);
+    const hasContent = value.length > 0;
 
     // ── Init on mount ────────────────────────────────────────────────────────
     useEffect(() => {
@@ -175,8 +175,7 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
       el.innerHTML = "";
       if (value) populateFromValue(el, value);
       lastValueRef.current = value;
-      setHasContent(!!value);
-      if (autoFocus) {
+      if (initialFocus) {
         el.focus();
         // Place cursor at end
         const sel = window.getSelection();
@@ -197,7 +196,6 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
       el.innerHTML = "";
       if (value) populateFromValue(el, value);
       lastValueRef.current = value;
-      setHasContent(!!value);
     }, [value]);
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -207,7 +205,6 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
       if (!el) return;
       const serialized = serialize(el);
       lastValueRef.current = serialized;
-      setHasContent(serialized.length > 0);
       onValueChange(serialized);
     }
 
@@ -413,6 +410,7 @@ export const MentionTextarea = forwardRef<HTMLDivElement, Props>(
         ) : null}
         <div
           ref={editorRef}
+          role="textbox"
           contentEditable={disabled ? false : true}
           suppressContentEditableWarning
           className={cn(

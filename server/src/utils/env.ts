@@ -22,7 +22,7 @@ const EnvSchema = t.Object({
   APP_URL: t.Optional(t.String({ format: "uri" })),
 });
 
-export type Env = Static<typeof EnvSchema>;
+type Env = Static<typeof EnvSchema>;
 
 const raw = {
   DATABASE_URL: process.env.DATABASE_URL,

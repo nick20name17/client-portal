@@ -1,5 +1,3 @@
-export type { User } from "@/types";
-
 export interface UsersParams {
   role?: string;
   companyId?: string;

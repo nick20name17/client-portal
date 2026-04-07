@@ -1,6 +1,6 @@
 import type { Anchor } from "@/types";
 
-export type PinPositionRaw = {
+type PinPositionRaw = {
   cx: number;
   cy: number;
   scrollWidth: number;

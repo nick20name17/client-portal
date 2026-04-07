@@ -1,5 +1,3 @@
-export type { Tag } from "@/types";
-
 export interface CreateTagPayload {
   name: string;
   color: string;

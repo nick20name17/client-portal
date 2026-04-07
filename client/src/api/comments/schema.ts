@@ -1,4 +1,4 @@
-export type { Anchor, Comment, Tag } from "@/types";
+export type { Comment, Tag } from "@/types";
 
 export interface CommentsParams {
   fileId?: string;

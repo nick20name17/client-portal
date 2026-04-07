@@ -1,5 +1,3 @@
-export type { Company } from "@/types";
-
 export interface CreateCompanyPayload {
   name: string;
 }

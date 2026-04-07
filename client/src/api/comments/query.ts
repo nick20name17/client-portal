@@ -10,7 +10,7 @@ export const COMMENT_KEYS = {
     ["comments", projectId, params] as const,
 };
 
-export const commentsQuery = (projectId: string, params: CommentsParams = {}) =>
+const commentsQuery = (projectId: string, params: CommentsParams = {}) =>
   queryOptions({
     queryKey: COMMENT_KEYS.list(projectId, params),
     queryFn: () => commentsService.getAll(projectId, params),
@@ -146,7 +146,7 @@ export function useAddCommentTag(projectId: string | undefined) {
   });
 }
 
-export function useRemoveCommentTag(projectId: string | undefined) {
+function useRemoveCommentTag(projectId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ commentId, tagId }: { commentId: number; tagId: number }) =>

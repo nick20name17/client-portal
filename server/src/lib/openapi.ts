@@ -6,7 +6,7 @@ let schemaCache: ReturnType<typeof auth.api.generateOpenAPISchema> | undefined;
 const getSchema = async () => (schemaCache ??= auth.api.generateOpenAPISchema());
 
 /** Merge Better Auth OpenAPI paths under `/api/auth/*` and tag them (same pattern as ps-crm). */
-export const OpenAPI = {
+const OpenAPI = {
   getPaths: (prefix = "/api/auth") =>
     getSchema().then(({ paths }) => {
       const reference: typeof paths = Object.create(null);

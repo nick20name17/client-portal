@@ -345,13 +345,10 @@ export const HtmlFrame = forwardRef<
     ref,
   ) {
   const localRef = useRef<HTMLIFrameElement | null>(null);
-  const [frameReady, setFrameReady] = useState(false);
+  const [loadedSrcDoc, setLoadedSrcDoc] = useState("");
   useImperativeHandle(ref, () => localRef.current as HTMLIFrameElement);
   const srcDoc = useMemo(() => (html ? injectBridge(html) : ""), [html]);
-
-  useEffect(() => {
-    setFrameReady(false);
-  }, [srcDoc]);
+  const frameReady = loadedSrcDoc !== "" && loadedSrcDoc === srcDoc;
 
   useEffect(() => {
     if (!frameReady) return;
@@ -390,7 +387,7 @@ export const HtmlFrame = forwardRef<
   }, [frameReady, anchorResolutionItems, onAnchorResolution]);
 
   function handleLoad() {
-    setFrameReady(true);
+    setLoadedSrcDoc(srcDoc);
     onFrameReady?.();
   }
 
@@ -425,8 +422,8 @@ export const HtmlFrame = forwardRef<
             </div>
             {/* cards */}
             <div className="grid grid-cols-3 gap-4 px-8 pb-8">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="flex flex-col gap-2 rounded-lg border border-border/30 p-4">
+              {["skeleton-card-1", "skeleton-card-2", "skeleton-card-3"].map((id) => (
+                <div key={id} className="flex flex-col gap-2 rounded-lg border border-border/30 p-4">
                   <Skeleton className="h-32 w-full rounded-md" />
                   <Skeleton className="h-4 w-3/4 rounded" />
                   <Skeleton className="h-3 w-full rounded" />

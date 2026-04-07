@@ -62,6 +62,7 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
       >
         {previewHtml ? (
           <iframe
+            title="Project preview"
             srcDoc={previewHtml}
             sandbox="allow-scripts"
             tabIndex={-1}

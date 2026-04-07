@@ -36,12 +36,9 @@ export function NewCommentComposePopover({
     const t = text.trim();
     if (!t) return;
     setSubmitting(true);
-    try {
-      await onSubmit(t);
-      setText("");
-    } finally {
-      setSubmitting(false);
-    }
+    await Promise.resolve(onSubmit(t))
+      .then(() => setText(""))
+      .finally(() => setSubmitting(false));
   }
 
   const selectedTags = tagOptions.filter((t) => selectedTagIds.includes(t.id));
@@ -65,7 +62,7 @@ export function NewCommentComposePopover({
         placeholder="Write feedback…"
         disabled={submitting}
         className="text-[13px]"
-        autoFocus
+        initialFocus
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();

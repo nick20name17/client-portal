@@ -115,5 +115,3 @@ export const ProjectModelSchema = {
 
 export type ProjectModel = InferSchema<typeof ProjectModelSchema>;
 
-/** Raw project row schema (internal / legacy) */
-export { projectSelect };

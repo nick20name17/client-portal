@@ -8,7 +8,7 @@ export const FILE_VERSION_KEYS = {
   checkNew: (projectId: string) => ["fileVersions", "checkNew", projectId] as const,
 };
 
-export const fileVersionsQuery = (projectId: string, fileId: string) =>
+const fileVersionsQuery = (projectId: string, fileId: string) =>
   queryOptions({
     queryKey: FILE_VERSION_KEYS.all(projectId, fileId),
     queryFn: () => fileVersionsService.getAll(projectId, fileId),
@@ -23,7 +23,7 @@ export function useFileVersions(projectId: string | undefined, fileId: string | 
   });
 }
 
-export function useCreateFileVersion(projectId: string | undefined, fileId: string | undefined) {
+function useCreateFileVersion(projectId: string | undefined, fileId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateFileVersionPayload) => {

@@ -29,12 +29,12 @@ function Alert({
   );
 }
 
-function AlertTitle({ className, ...props }: React.ComponentProps<"h5">) {
-  return <h5 className={cn("mb-1 font-medium leading-none tracking-tight", className)} {...props} />;
+function AlertTitle({ className, children, ...props }: React.ComponentProps<"h5">) {
+  return <h5 className={cn("mb-1 font-medium leading-none tracking-tight", className)} {...props}>{children}</h5>;
 }
 
 function AlertDescription({ className, ...props }: React.ComponentProps<"div">) {
   return <div className={cn("text-sm [&_p]:leading-relaxed", className)} {...props} />;
 }
 
-export { Alert, AlertTitle, AlertDescription };
+export { Alert, AlertDescription };

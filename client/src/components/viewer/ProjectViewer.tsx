@@ -211,10 +211,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, [newVersionsData, setFileId, queryClient, projectId]);
 
   useEffect(() => {
-    if (htmlLoading) { setAnchorResolvedMap({}); setPinPositions({}); }
-  }, [htmlLoading]);
-
-  useEffect(() => {
     if (!files?.length) return;
     void setFileId((prev) => {
       if (prev && files.some((f) => String(f.id) === prev)) return prev;
@@ -230,6 +226,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     let cancelled = false;
     setHtmlLoading(true);
     setHtmlError(null);
+    setAnchorResolvedMap({});
+    setPinPositions({});
     const suffix = selectedVersionId ? `?versionId=${selectedVersionId}` : "";
     void apiText(`/projects/${projectId}/files/${fileId}/html${suffix}`)
       .then((t) => { if (!cancelled) setHtml(t); })
@@ -244,14 +242,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     fileId ?? undefined,
   );
 
-  // Reset version + stale pins on file switch
-  useEffect(() => {
+  // Reset version + stale pins on file switch (render-time derivation)
+  const [prevFileId, setPrevFileId] = useState(fileId);
+  if (fileId !== prevFileId) {
+    setPrevFileId(fileId);
     setSelectedVersionId(null);
     setPinPositions({});
     setAnchorResolvedMap({});
     setActiveThreadId(null);
     setGhostRaw(null);
-  }, [fileId]);
+  }
 
   useEffect(() => {
     if (!fileVersionsList?.length) return;
@@ -264,9 +264,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const { data: comments, isPending: commentsLoading } = useComments(projectId, fileId ?? undefined, selectedVersionId);
   const [reLinkCommentId, setReLinkCommentId] = useState<number | null>(null);
   const reLinkCommentIdRef = useRef<number | null>(null);
-  useEffect(() => { reLinkCommentIdRef.current = reLinkCommentId; }, [reLinkCommentId]);
+  reLinkCommentIdRef.current = reLinkCommentId;
   const patchCommentRef = useRef(patchComment);
-  useEffect(() => { patchCommentRef.current = patchComment; });
+  patchCommentRef.current = patchComment;
   const pendingContextMenuFractionRef = useRef<{ fX: number; fY: number } | null>(null);
   const contextMenuTriggerRef = useRef<HTMLSpanElement>(null);
   const [isOverIframe, setIsOverIframe] = useState(false);
@@ -835,12 +835,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       if (pendingContextMenuFractionRef.current !== null) {
         pendingContextMenuFractionRef.current = null;
         if (!e.data.anchor) { toast.error("No element at that position"); return; }
-        processAnchorSelectedRef.current(e.data.anchor as Anchor);
+        processAnchorSelected(e.data.anchor as Anchor);
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, []);
+  }, [processAnchorSelected]);
 
   function copyShare() {
     void navigator.clipboard.writeText(window.location.href);
@@ -877,9 +877,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       comments: topLevelCommentsWithAnchors,
     }, "*");
   }, [topLevelComments]);
-  const processAnchorSelectedRef = useRef(processAnchorSelected);
-  useEffect(() => { processAnchorSelectedRef.current = processAnchorSelected; });
-
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (e.data?.type !== "CONTEXT_MENU") return;

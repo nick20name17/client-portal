@@ -11,14 +11,14 @@ export function buildGithubRawUrl(owner: string, repo: string, ref: string, path
   return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${p}`;
 }
 
-export type GithubTreeBlob = {
+type GithubTreeBlob = {
   path: string;
   type: string;
   sha: string;
   url?: string;
 };
 
-export type GithubCommit = {
+type GithubCommit = {
   sha: string;
   message: string;
   author: string | null;

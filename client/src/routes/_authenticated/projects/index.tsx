@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useReducer, useState } from "react";
 import {
   ExternalLink,
   FolderKanban,
@@ -62,7 +62,7 @@ import {
   useUpdateProject,
 } from "@/api/projects/query";
 import type { Project } from "@/types";
-import { ApiError } from "@/lib/api";
+import { apiErrorMsg } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/projects/")({
@@ -71,6 +71,16 @@ export const Route = createFileRoute("/_authenticated/projects/")({
   },
   component: ProjectsPage,
 });
+
+function syncProject(sync: ReturnType<typeof useSyncProjectFiles>, id: number) {
+  sync
+    .mutateAsync(String(id))
+    .then((r) => toast.success(`Synced ${r.synced} file(s)`))
+    .catch((e: Error) => {
+      const msg = e.message || "Sync failed";
+      toast.error(msg);
+    });
+}
 
 function isGithubUrl(s: string) {
   try {
@@ -89,6 +99,203 @@ function ProjectsPage() {
   );
 }
 
+// --- Reducer ---
+
+type ProjFormState = { name: string; description: string; repoUrl: string; companyId: string };
+
+type ProjDialogState = {
+  dialogOpen: boolean;
+  editing: Project | null;
+  form: ProjFormState;
+  deleteTarget: Project | null;
+  membersProjectId: number | null;
+};
+
+const initialProjDialogState: ProjDialogState = {
+  dialogOpen: false,
+  editing: null,
+  form: { name: "", description: "", repoUrl: "", companyId: "" },
+  deleteTarget: null,
+  membersProjectId: null,
+};
+
+type ProjDialogAction =
+  | { type: "OPEN_CREATE"; payload: { companyId: string } }
+  | { type: "OPEN_EDIT"; payload: Project }
+  | { type: "CLOSE_DIALOG" }
+  | { type: "SET_FORM"; payload: Partial<ProjFormState> }
+  | { type: "SET_DELETE_TARGET"; payload: Project | null }
+  | { type: "SET_MEMBERS_PROJECT"; payload: number | null };
+
+function projDialogReducer(state: ProjDialogState, action: ProjDialogAction): ProjDialogState {
+  switch (action.type) {
+    case "OPEN_CREATE":
+      return {
+        ...state,
+        dialogOpen: true,
+        editing: null,
+        form: { name: "", description: "", repoUrl: "", companyId: action.payload.companyId },
+      };
+    case "OPEN_EDIT":
+      return {
+        ...state,
+        dialogOpen: true,
+        editing: action.payload,
+        form: {
+          name: action.payload.name,
+          description: action.payload.description ?? "",
+          repoUrl: action.payload.repoUrl,
+          companyId: String(action.payload.companyId),
+        },
+      };
+    case "CLOSE_DIALOG":
+      return { ...state, dialogOpen: false };
+    case "SET_FORM":
+      return { ...state, form: { ...state.form, ...action.payload } };
+    case "SET_DELETE_TARGET":
+      return { ...state, deleteTarget: action.payload };
+    case "SET_MEMBERS_PROJECT":
+      return { ...state, membersProjectId: action.payload };
+    default:
+      return state;
+  }
+}
+
+// --- Sub-components ---
+
+function ProjectFormDialog({
+  open,
+  editing,
+  form,
+  companies,
+  isAdmin,
+  isSaving,
+  onFormChange,
+  onSave,
+  onClose,
+}: {
+  open: boolean;
+  editing: Project | null;
+  form: ProjFormState;
+  companies: { id: number; name: string }[] | undefined;
+  isAdmin: boolean;
+  isSaving: boolean;
+  onFormChange: (patch: Partial<ProjFormState>) => void;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{editing ? "Edit project" : "New project"}</DialogTitle>
+          <DialogDescription>
+            {editing
+              ? "Update project name, description, or repo URL."
+              : "Connect a GitHub repository to start reviewing HTML."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <Field>
+            <FieldLabel htmlFor="proj-name">Name</FieldLabel>
+            <Input
+              id="proj-name"
+              placeholder="My Project"
+              value={form.name}
+              onChange={(e) => onFormChange({ name: e.target.value })}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="proj-desc">
+              Description <span className="text-text-tertiary font-normal">(optional)</span>
+            </FieldLabel>
+            <Textarea
+              id="proj-desc"
+              placeholder="Short description…"
+              value={form.description}
+              onChange={(e) => onFormChange({ description: e.target.value })}
+              rows={2}
+              className="resize-none"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="proj-repo">GitHub repo URL</FieldLabel>
+            <Input
+              id="proj-repo"
+              placeholder="https://github.com/org/repo"
+              value={form.repoUrl}
+              onChange={(e) => onFormChange({ repoUrl: e.target.value })}
+            />
+          </Field>
+          {!editing && isAdmin ? (
+            <Field>
+              <FieldLabel>Company</FieldLabel>
+              <Select
+                value={form.companyId || "__none"}
+                onValueChange={(v) => onFormChange({ companyId: v === "__none" ? "" : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select company" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">—</SelectItem>
+                  {companies?.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onSave} isPending={isSaving} disabled={isSaving}>
+            {editing ? "Save changes" : "Create project"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteProjectDialog({
+  target,
+  onClose,
+  onConfirm,
+}: {
+  target: Project | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog open={!!target} onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete &ldquo;{target?.name}&rdquo;?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This removes the project and all related data. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={onConfirm}
+          >
+            Delete project
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+// --- Main component ---
+
 function ProjectsContent() {
   const { data: sessionData } = authClient.useSession();
   const appRole = (sessionData?.user as { role?: string } | undefined)?.role;
@@ -104,17 +311,7 @@ function ProjectsContent() {
 
   const [q, setQ] = useState("");
   const [companyFilter, setCompanyFilter] = useState<string>("");
-
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Project | null>(null);
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    repoUrl: "",
-    companyId: "",
-  });
-  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
-  const [membersProjectId, setMembersProjectId] = useState<number | null>(null);
+  const [state, dispatch] = useReducer(projDialogReducer, initialProjDialogState);
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -135,77 +332,65 @@ function ProjectsContent() {
   }, [data, q, companyFilter, appRole, companyId]);
 
   function openCreate() {
-    setEditing(null);
-    setForm({
-      name: "",
-      description: "",
-      repoUrl: "",
-      companyId: appRole === "manager" && companyId ? String(companyId) : "",
-    });
-    setDialogOpen(true);
-  }
-
-  function openEdit(p: Project) {
-    setEditing(p);
-    setForm({
-      name: p.name,
-      description: p.description ?? "",
-      repoUrl: p.repoUrl,
-      companyId: String(p.companyId),
-    });
-    setDialogOpen(true);
+    dispatch({ type: "OPEN_CREATE", payload: { companyId: appRole === "manager" && companyId ? String(companyId) : "" } });
   }
 
   async function save() {
-    if (!form.name.trim() || !form.repoUrl.trim()) {
+    if (!state.form.name.trim() || !state.form.repoUrl.trim()) {
       toast.error("Name and repo URL are required");
       return;
     }
-    if (!isGithubUrl(form.repoUrl)) {
+    if (!isGithubUrl(state.form.repoUrl)) {
       toast.error("Repo URL must be a valid github.com link");
       return;
     }
+    const trimmedName = state.form.name.trim();
+    const trimmedDesc = state.form.description.trim();
+    const descOrNull = trimmedDesc || null;
+    const descOrUndef = trimmedDesc || undefined;
+    const trimmedRepo = state.form.repoUrl.trim();
+    const cidRaw = appRole === "manager" ? companyId! : Number(state.form.companyId);
+    let createdId: number | null = null;
     try {
-      if (editing) {
+      if (state.editing) {
         await update.mutateAsync({
-          id: editing.id,
-          name: form.name.trim(),
-          description: form.description.trim() || null,
-          repoUrl: form.repoUrl.trim(),
+          id: state.editing.id,
+          name: trimmedName,
+          description: descOrNull,
+          repoUrl: trimmedRepo,
         });
         toast.success("Project updated");
       } else {
-        const cidRaw = appRole === "manager" ? companyId! : Number(form.companyId);
         if (!cidRaw) {
           toast.error("Company is required");
           return;
         }
         const created = await create.mutateAsync({
-          name: form.name.trim(),
-          description: form.description.trim() || undefined,
-          repoUrl: form.repoUrl.trim(),
+          name: trimmedName,
+          description: descOrUndef,
+          repoUrl: trimmedRepo,
           companyId: cidRaw,
         });
+        createdId = created.id;
         toast.success("Project created");
-        void sync
-          .mutateAsync(String(created.id))
-          .then((r) => toast.success(`Synced ${r.synced} file(s)`))
-          .catch((e: Error) => toast.error(e.message ?? "Sync failed"));
       }
-      setDialogOpen(false);
+      dispatch({ type: "CLOSE_DIALOG" });
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Request failed");
+      toast.error(apiErrorMsg(e, "Request failed"));
+    }
+    if (createdId !== null) {
+      void syncProject(sync, createdId);
     }
   }
 
   async function confirmDelete() {
-    if (!deleteTarget) return;
+    if (!state.deleteTarget) return;
     try {
-      await remove.mutateAsync(deleteTarget.id);
+      await remove.mutateAsync(state.deleteTarget.id);
       toast.success("Project deleted");
-      setDeleteTarget(null);
+      dispatch({ type: "SET_DELETE_TARGET", payload: null });
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Delete failed");
+      toast.error(apiErrorMsg(e, "Delete failed"));
     }
   }
 
@@ -300,117 +485,37 @@ function ProjectsContent() {
               key={p.id}
               project={p}
               isLast={i === filtered.length - 1}
-              onEdit={() => openEdit(p)}
-              onMembers={() => setMembersProjectId(p.id)}
-              onDelete={appRole === "admin" ? () => setDeleteTarget(p) : undefined}
+              onEdit={() => dispatch({ type: "OPEN_EDIT", payload: p })}
+              onMembers={() => dispatch({ type: "SET_MEMBERS_PROJECT", payload: p.id })}
+              onDelete={appRole === "admin" ? () => dispatch({ type: "SET_DELETE_TARGET", payload: p }) : undefined}
             />
           ))}
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit project" : "New project"}</DialogTitle>
-            <DialogDescription>
-              {editing
-                ? "Update project name, description, or repo URL."
-                : "Connect a GitHub repository to start reviewing HTML."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <Field>
-              <FieldLabel htmlFor="proj-name">Name</FieldLabel>
-              <Input
-                id="proj-name"
-                placeholder="My Project"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="proj-desc">
-                Description <span className="text-text-tertiary font-normal">(optional)</span>
-              </FieldLabel>
-              <Textarea
-                id="proj-desc"
-                placeholder="Short description…"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                rows={2}
-                className="resize-none"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="proj-repo">GitHub repo URL</FieldLabel>
-              <Input
-                id="proj-repo"
-                placeholder="https://github.com/org/repo"
-                value={form.repoUrl}
-                onChange={(e) => setForm((f) => ({ ...f, repoUrl: e.target.value }))}
-              />
-            </Field>
-            {!editing && appRole === "admin" ? (
-              <Field>
-                <FieldLabel>Company</FieldLabel>
-                <Select
-                  value={form.companyId || "__none"}
-                  onValueChange={(v) =>
-                    setForm((f) => ({ ...f, companyId: v === "__none" ? "" : v }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select company" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">—</SelectItem>
-                    {companies?.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={() => void save()} isPending={isSaving} disabled={isSaving}>
-              {editing ? "Save changes" : "Create project"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ProjectMembersSheet
-        projectId={membersProjectId}
-        open={!!membersProjectId}
-        onOpenChange={(o) => !o && setMembersProjectId(null)}
+      <ProjectFormDialog
+        open={state.dialogOpen}
+        editing={state.editing}
+        form={state.form}
+        companies={companies}
+        isAdmin={appRole === "admin"}
+        isSaving={isSaving}
+        onFormChange={(patch) => dispatch({ type: "SET_FORM", payload: patch })}
+        onSave={() => void save()}
+        onClose={() => dispatch({ type: "CLOSE_DIALOG" })}
       />
 
+      <ProjectMembersSheet
+        projectId={state.membersProjectId}
+        open={!!state.membersProjectId}
+        onOpenChange={(o) => !o && dispatch({ type: "SET_MEMBERS_PROJECT", payload: null })}
+      />
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete &ldquo;{deleteTarget?.name}&rdquo;?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the project and all related data. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => void confirmDelete()}
-            >
-              Delete project
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteProjectDialog
+        target={state.deleteTarget}
+        onClose={() => dispatch({ type: "SET_DELETE_TARGET", payload: null })}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 }

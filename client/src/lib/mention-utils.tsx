@@ -1,12 +1,11 @@
 
-/** Renders @[Name](userId) tokens as highlighted spans; plain text otherwise. */
-export function renderMentionBody(body: string): React.ReactNode {
+export function MentionBody({ text }: { text: string }) {
   const regex = /@\[([^\]]+)\]\([^)]+\)/g;
   const parts: React.ReactNode[] = [];
   let last = 0;
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(body)) !== null) {
-    if (match.index > last) parts.push(body.slice(last, match.index));
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
     parts.push(
       <span key={match.index} className="font-medium text-primary">
         @{match[1]}
@@ -14,6 +13,6 @@ export function renderMentionBody(body: string): React.ReactNode {
     );
     last = match.index + match[0].length;
   }
-  if (last < body.length) parts.push(body.slice(last));
-  return parts.length > 0 ? parts : body;
+  if (last < text.length) parts.push(text.slice(last));
+  return <>{parts.length > 0 ? parts : text}</>;
 }

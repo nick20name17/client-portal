@@ -3,12 +3,12 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import type { CreateUserPayload, UpdateUserPayload, UsersParams } from "./schema";
 import { usersService } from "./service";
 
-export const USER_KEYS = {
+const USER_KEYS = {
   all: () => ["users"] as const,
   list: (params: UsersParams) => ["users", params.role, params.companyId] as const,
 };
 
-export const usersQuery = (params: UsersParams = {}) =>
+const usersQuery = (params: UsersParams = {}) =>
   queryOptions({
     queryKey: USER_KEYS.list(params),
     queryFn: () => usersService.getAll(params),

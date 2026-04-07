@@ -50,12 +50,16 @@ export function VersionSelector({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    if (forceOpen) {
-      setOpen(true);
-      onForceOpenHandled?.();
-    }
-  }, [forceOpen, onForceOpenHandled]);
+  // Render-time state derivation instead of useEffect
+  const [prevForceOpen, setPrevForceOpen] = useState(false);
+  if (forceOpen && !prevForceOpen) {
+    setPrevForceOpen(true);
+    setOpen(true);
+    onForceOpenHandled?.();
+  }
+  if (!forceOpen && prevForceOpen) {
+    setPrevForceOpen(false);
+  }
 
   const { data: allComments } = useComments(projectId, fileId);
   const commentCountByVersion = (allComments ?? []).reduce<Record<number, number>>((acc, c) => {
@@ -72,19 +76,20 @@ export function VersionSelector({
 
   async function handleDelete(versionId: number, e: React.MouseEvent) {
     e.stopPropagation();
+    const remaining = versions?.filter((v) => v.id !== versionId) ?? [];
+    const fallbackId = remaining[remaining.length - 1]?.id ?? null;
+    const needsFallback = selectedVersionId === versionId;
     setDeleting(versionId);
-    try {
-      await deleteVersion.mutateAsync(versionId);
-      toast.success("Version deleted");
-      if (selectedVersionId === versionId) {
-        const remaining = versions?.filter((v) => v.id !== versionId) ?? [];
-        onSelectVersion(remaining[remaining.length - 1]?.id ?? null);
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete version");
-    } finally {
-      setDeleting(null);
-    }
+    await deleteVersion.mutateAsync(versionId)
+      .then(() => {
+        toast.success("Version deleted");
+        if (needsFallback) onSelectVersion(fallbackId);
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : "Failed to delete version";
+        toast.error(msg);
+      })
+      .finally(() => setDeleting(null));
   }
 
   if (isPending) {

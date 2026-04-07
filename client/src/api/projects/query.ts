@@ -3,31 +3,31 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import type { AddMemberPayload, CreateProjectPayload, UpdateProjectPayload } from "./schema";
 import { projectsService } from "./service";
 
-export const PROJECT_KEYS = {
+const PROJECT_KEYS = {
   all: () => ["projects"] as const,
   detail: (id: string) => ["projects", id] as const,
   files: (projectId: string) => ["projects", projectId, "files"] as const,
   members: (projectId: number) => ["projects", projectId, "members"] as const,
 };
 
-export const projectsQuery = () =>
+const projectsQuery = () =>
   queryOptions({ queryKey: PROJECT_KEYS.all(), queryFn: projectsService.getAll });
 
-export const projectQuery = (id: string) =>
+const projectQuery = (id: string) =>
   queryOptions({
     queryKey: PROJECT_KEYS.detail(id),
     queryFn: () => projectsService.getById(id),
     enabled: !!id,
   });
 
-export const projectFilesQuery = (projectId: string) =>
+const projectFilesQuery = (projectId: string) =>
   queryOptions({
     queryKey: PROJECT_KEYS.files(projectId),
     queryFn: () => projectsService.getFiles(projectId),
     enabled: !!projectId,
   });
 
-export const projectMembersQuery = (projectId: number | undefined) =>
+const projectMembersQuery = (projectId: number | undefined) =>
   queryOptions({
     queryKey: PROJECT_KEYS.members(projectId ?? 0),
     queryFn: () => projectsService.getMembers(projectId!),

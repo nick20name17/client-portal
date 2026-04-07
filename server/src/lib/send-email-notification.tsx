@@ -8,7 +8,7 @@ import { env } from "@/utils/env";
 import { and, eq, inArray, ne, or } from "drizzle-orm";
 import * as React from "react";
 
-export type EmailNotificationPayload =
+type EmailNotificationPayload =
   | {
       type: "comment.created" | "comment.reply" | "comment.resolved" | "comment.mention";
       commentId: number;
@@ -57,13 +57,12 @@ export async function sendEmailNotification(payload: EmailNotificationPayload): 
   if (!resend) return;
 
   if (payload.type === "member.added") {
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, Number(payload.projectId)))
-      .limit(1);
-    const newMember = await getUser(payload.userId);
-    const actor = await getUser(payload.actorId);
+    const [projectResult, newMember, actor] = await Promise.all([
+      db.select().from(projects).where(eq(projects.id, Number(payload.projectId))).limit(1),
+      getUser(payload.userId),
+      getUser(payload.actorId),
+    ]);
+    const project = projectResult;
     if (!project || !newMember?.email || newMember.emailNotifications === false) return;
     const actorName = actor?.name ?? "Administrator";
     const subject = `You've been added to project ${project.name}`;
