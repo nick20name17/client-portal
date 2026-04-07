@@ -1,14 +1,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Check, ChevronDown, GripVertical, Link2Off, MessageSquarePlus, Pencil, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Check, CheckCircle, ChevronDown, GripVertical, Link2Off, MessageSquarePlus, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
+import { TagBadge } from "@/components/comments/TagBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { renderMentionBody } from "@/lib/mention-utils";
+import { MentionBody } from "@/lib/mention-utils";
 import { cn, formatRelativeShort } from "@/lib/utils";
 import type { Anchor, Comment, FileVersion, Tag, User } from "@/types";
 
@@ -99,15 +100,18 @@ function CommentThread({
         "group/card rounded-lg px-3 py-2.5 shadow-[var(--shadow-card)] transition-all duration-100",
         isOrphaned ? "border border-red-500/30 bg-red-500/5" : isUnlinked ? "border border-amber-500/30 bg-amber-500/5" : "bg-background",
         isActive ? "ring-1 ring-primary/30" : "hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)]",
-        comment.resolved && "opacity-50",
-        onReLink ? "cursor-grab" : "cursor-pointer",
+        comment.resolved && "opacity-50 cursor-default",
+        !comment.resolved && (onReLink ? "cursor-grab" : "cursor-pointer"),
         isDragging && "opacity-40",
       )}
       onClick={() => !editing && onClick()}
-      onMouseEnter={() => onHover(comment.anchor as Anchor)}
-      onMouseLeave={() => onHover(null)}
+      onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !editing) { e.preventDefault(); onClick(); } }}
+      onMouseEnter={() => !comment.resolved && onHover(comment.anchor as Anchor)}
+      onMouseLeave={() => !comment.resolved && onHover(null)}
       {...(onReLink ? listeners : {})}
       {...(onReLink ? attributes : {})}
+      role="button"
+      tabIndex={0}
     >
       <div className="flex gap-2.5">
         <UserAvatar
@@ -146,9 +150,9 @@ function CommentThread({
 
           {/* Body — edit mode or display */}
           {editing ? (
-            <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+            <div role="presentation" className="mt-1" onClick={(e) => e.stopPropagation()}>
               <MentionTextarea
-                autoFocus
+                initialFocus
                 value={editText}
                 onValueChange={setEditText}
                 members={members}
@@ -179,9 +183,18 @@ function CommentThread({
             </div>
           ) : (
             <p className={cn("mt-0.5 text-[13px] leading-relaxed text-foreground/80", comment.resolved && "line-through")}>
-              {renderMentionBody(comment.body)}
+              <MentionBody text={comment.body} />
             </p>
           )}
+
+          {/* Tags */}
+          {comment.tags?.length ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {comment.tags.map((t) => (
+                <TagBadge key={t.id} tag={t} className="text-[10px] px-1 py-0" />
+              ))}
+            </div>
+          ) : null}
 
           {/* Actions row — always rendered to prevent height shift on hover */}
           {!editing ? (
@@ -193,13 +206,26 @@ function CommentThread({
               ) : null}
               <div className="ml-auto flex items-center gap-1.5 invisible group-hover/card:visible">
                 {confirmDelete ? (
-                  <span className="flex items-center gap-1.5 text-[12px]" onClick={(e) => e.stopPropagation()}>
+                  <span role="presentation" className="flex items-center gap-1.5 text-[12px]" onClick={(e) => e.stopPropagation()}>
                     <span className="text-destructive">Delete?</span>
                     <button type="button" onClick={() => { void onDelete!(comment.id); setConfirmDelete(false); }} className="font-medium text-destructive hover:underline">Yes</button>
                     <button type="button" onClick={() => setConfirmDelete(false)} className="text-muted-foreground hover:text-foreground">No</button>
                   </span>
                 ) : (
                   <>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] transition-colors",
+                        comment.resolved
+                          ? "text-muted-foreground hover:text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={(e) => { e.stopPropagation(); void onResolve(comment.id, !comment.resolved); }}
+                    >
+                      {comment.resolved ? <RotateCcw className="size-3" /> : <CheckCircle className="size-3" />}
+                      {comment.resolved ? "Unresolve" : "Resolve"}
+                    </button>
                     {canEdit ? (
                       <button
                         type="button"
@@ -303,7 +329,7 @@ export function CommentsSidebar({
   }, [versions]);
 
   const topLevel = useMemo(() => (comments ?? []).filter((c) => !c.parentId), [comments]);
-  const openCount = useMemo(() => topLevel.filter((c) => !c.resolved).length, [topLevel]);
+  const openCount = topLevel.filter((c) => !c.resolved).length;
 
   const filtered = useMemo(() => {
     let rows = topLevel;
@@ -360,7 +386,7 @@ export function CommentsSidebar({
           isOrphaned={opts.isOrphaned}
           isUnlinked={opts.isUnlinked}
           versionSha={c.versionId ? versionShaById[c.versionId] : undefined}
-          onClick={() => onSelectThread(c.id)}
+          onClick={() => !c.resolved && onSelectThread(c.id)}
           onHover={onHover}
           onResolve={onResolve}
           onEdit={onEditComment}
@@ -504,9 +530,9 @@ export function CommentsSidebar({
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto bg-bg-secondary px-3 py-2.5 space-y-1.5" role="list">
         {loading ? (
           <div className="space-y-1.5">
-            {[1, 2, 3].map((i) => (
+            {["skeleton-1", "skeleton-2", "skeleton-3"].map((id) => (
               <div
-                key={i}
+                key={id}
                 className="flex gap-2.5 rounded-lg bg-background px-3 py-3 shadow-[var(--shadow-card)]"
               >
                 <Skeleton className="size-6 shrink-0 rounded-full" />

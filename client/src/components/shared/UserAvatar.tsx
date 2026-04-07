@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
-export const AUTHOR_COLORS = [
+const AUTHOR_COLORS = [
   "#ef4444", // red-500
   "#f97316", // orange-500
   "#eab308", // yellow-500
@@ -45,7 +45,7 @@ export function UserAvatar({
     <Avatar className={cn("size-8", className)}>
       {image ? <AvatarImage src={image} alt="" /> : null}
       <AvatarFallback
-        className={cn("font-semibold text-white tracking-tight", initials.length > 1 ? "text-[9px]" : "text-[11px]")}
+        className={cn("font-semibold text-white tracking-tight", initials.length > 1 ? "text-[11px]" : "text-[13px]")}
         style={{ backgroundColor: bg }}
       >
         {initials || "?"}

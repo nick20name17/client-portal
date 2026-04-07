@@ -8,7 +8,7 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-import { renderMentionBody } from "@/lib/mention-utils";
+import { MentionBody } from "@/lib/mention-utils";
 import { cn, formatRelativeShort } from "@/lib/utils";
 import type { Comment, Tag, User } from "@/types";
 
@@ -139,7 +139,7 @@ function ThreadMessageItem({
         {editing ? (
           <div className="mt-1">
             <MentionTextarea
-              autoFocus
+              initialFocus
               value={editText}
               onValueChange={setEditText}
               members={members}
@@ -169,7 +169,7 @@ function ThreadMessageItem({
             </div>
           </div>
         ) : (
-          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/90">{renderMentionBody(item.body)}</p>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/90"><MentionBody text={item.body} /></p>
         )}
       </div>
     </div>
@@ -230,15 +230,10 @@ export function InlineThreadPopover({
     setSubmitting(true);
     setReplyText("");
     setReplyingTo(null);
-    try {
-      if (pendingReplyingTo) {
-        await onReply(pendingReplyingTo.threadRootId, t);
-      } else {
-        await onNewComment(comment.id, t);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    const action = pendingReplyingTo
+      ? () => onReply(pendingReplyingTo.threadRootId, t)
+      : () => onNewComment(comment.id, t);
+    await Promise.resolve(action()).finally(() => setSubmitting(false));
   }
 
   return (
@@ -267,9 +262,9 @@ export function InlineThreadPopover({
                   size="icon"
                   className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
                   disabled={deletePending}
-                  onClick={async () => {
+                  onClick={() => {
                     setDeletePending(true);
-                    try { await onDelete(comment.id); } finally { setDeletePending(false); }
+                    void Promise.resolve(onDelete(comment.id)).finally(() => setDeletePending(false));
                   }}
                 >
                   <Trash2 className="size-3.5" />
@@ -299,9 +294,11 @@ export function InlineThreadPopover({
                 variant="ghost"
                 size="icon"
                 className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                onClick={async () => {
+                onClick={() => {
+                  const newResolved = !comment.resolved;
                   setResolvePending(true);
-                  try { await onResolve(comment.id, !comment.resolved); } finally { setResolvePending(false); }
+                  void Promise.resolve(onResolve(comment.id, newResolved)).finally(() => setResolvePending(false));
+                  if (newResolved) onClose();
                 }}
                 disabled={!canResolve(currentUser) || resolvePending}
               >
