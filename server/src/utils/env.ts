@@ -20,6 +20,7 @@ const EnvSchema = t.Object({
   RESEND_API_KEY: t.Optional(t.String()),
   EMAIL_FROM: t.Optional(t.String()),
   APP_URL: t.Optional(t.String({ format: "uri" })),
+  GITHUB_TOKEN: t.Optional(t.String()),
 });
 
 type Env = Static<typeof EnvSchema>;
@@ -36,6 +37,7 @@ const raw = {
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   EMAIL_FROM: process.env.EMAIL_FROM,
   APP_URL: process.env.APP_URL,
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN,
 };
 
 const withDefaults = Value.Default(EnvSchema, raw);

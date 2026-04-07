@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { Check, GitCommit, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Check, GitCommit, Loader2, Search, Trash2 } from "lucide-react";
 
 import { toast } from "sonner";
 
@@ -193,25 +193,6 @@ export function VersionSelector({
                 )}
               </div>
             ))
-          )}
-          {canManage && sortedVersions.length > 0 && (
-            <>
-              <div className="my-1 h-px bg-border" />
-              <button
-                type="button"
-                onClick={() => {
-                  syncVersions.mutate(undefined, {
-                    onSuccess: () => toast.success("Versions refreshed"),
-                    onError: (e) => toast.error(e instanceof Error ? e.message : "Sync failed"),
-                  });
-                }}
-                disabled={syncVersions.isPending}
-                className="flex w-full cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-              >
-                {syncVersions.isPending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-                Refresh from GitHub
-              </button>
-            </>
           )}
         </div>
       </PopoverContent>

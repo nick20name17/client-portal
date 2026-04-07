@@ -137,15 +137,9 @@ export const FileVersionService = {
       .where(eq(fileVersions.fileId, fileId));
 
     const existingShas = new Set(existingVersions.map((v) => v.commitSha));
-    const perPage = existingShas.size === 0 ? 100 : 1;
+    const perPage = existingShas.size === 0 ? 100 : 30;
 
-    let commits: Awaited<ReturnType<typeof fetchFileCommits>>;
-    try {
-      commits = await fetchFileCommits(owner, repo, filePath, perPage);
-    } catch (e) {
-      console.error(`[syncVersionsForFile] commit fetch failed for ${filePath}:`, e);
-      return;
-    }
+    const commits = await fetchFileCommits(owner, repo, filePath, perPage);
 
     const toInsert = commits
       .filter((c) => !existingShas.has(c.sha))
@@ -178,13 +172,17 @@ export const FileVersionService = {
       .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.active, true)));
 
     const synced = await Promise.all(
-      files.map(async (f) => ({
-        fileId: f.id,
-        filePath: f.path,
-        newCount: await FileVersionService.syncVersionsForFile(
-          projectId, String(f.id), f.path, parsed.owner, parsed.repo, null,
-        ) ?? 0,
-      })),
+      files.map(async (f) => {
+        try {
+          const n = await FileVersionService.syncVersionsForFile(
+            projectId, String(f.id), f.path, parsed.owner, parsed.repo, null,
+          );
+          return { fileId: f.id, filePath: f.path, newCount: n ?? 0 };
+        } catch (e) {
+          console.error(`[checkNewVersions] ${f.path}:`, e);
+          return { fileId: f.id, filePath: f.path, newCount: 0 };
+        }
+      }),
     );
     return synced.filter((s) => s.newCount > 0);
   },

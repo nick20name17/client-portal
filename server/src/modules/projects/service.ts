@@ -1,3 +1,4 @@
+import { env } from "@/utils/env";
 import { db } from "@/db";
 import { user as userTable } from "@/db/schema/auth";
 import { comments } from "@/db/schema/comments";
@@ -363,7 +364,8 @@ export const ProjectService = {
         .returning();
       await Promise.all(
         upsertedFiles.map((f) =>
-          FileVersionService.syncVersionsForFile(p.id, f.id, f.path, owner, repo, user.id),
+          FileVersionService.syncVersionsForFile(p.id, f.id, f.path, owner, repo, user.id)
+            .catch((e) => console.error(`[syncFiles] version sync failed for ${f.path}:`, e)),
         ),
       );
     }
@@ -412,7 +414,10 @@ export const ProjectService = {
     }
 
     const bustUrl = `${fetchUrl}${fetchUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+    const headers: Record<string, string> = { };
+    if (env.GITHUB_TOKEN) headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
     const res = await fetch(bustUrl, {
+      headers,
       cache: "no-store",
     });
     if (!res.ok) {

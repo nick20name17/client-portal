@@ -1,4 +1,15 @@
+import { env } from "@/utils/env";
+
 const GITHUB_REPO_RE = /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i;
+
+function githubHeaders(): Record<string, string> {
+  const h: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (env.GITHUB_TOKEN) h.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
+  return h;
+}
 
 export function parseGithubRepoUrl(repoUrl: string): { owner: string; repo: string } | null {
   const m = repoUrl.trim().match(GITHUB_REPO_RE);
@@ -34,10 +45,7 @@ export async function fetchFileCommits(
   const p = filePath.startsWith("/") ? filePath.slice(1) : filePath;
   const url = `https://api.github.com/repos/${owner}/${repo}/commits?path=${encodeURIComponent(p)}&per_page=${perPage}`;
   const res = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
+    headers: githubHeaders(),
     cache: "no-store",
   });
   if (!res.ok) {
@@ -62,10 +70,7 @@ export async function fetchGithubTreeRecursive(
 ): Promise<GithubTreeBlob[]> {
   const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`;
   const res = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
+    headers: githubHeaders(),
     cache: "no-store",
   });
   if (!res.ok) {
