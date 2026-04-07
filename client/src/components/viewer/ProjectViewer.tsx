@@ -1640,12 +1640,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               dispatch={dispatch}
             />
 
-            <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col pt-24 px-3 pb-3 md:pt-24 md:px-4 md:pb-4">
+            <div className={cn("relative flex h-full min-h-0 min-w-0 flex-1 flex-col", isFullscreen ? "p-0" : "pt-24 px-3 pb-3 md:pt-24 md:px-4 md:pb-4")}>
               {!filesLoading && !files?.length ? (
                 <p className="text-sm text-muted-foreground">No HTML files. Run sync from the projects list.</p>
               ) : (
                 <div className={cn(
-                  "relative flex min-h-0 flex-1 flex-col rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08),0_8px_32px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] transition-shadow duration-150",
+                  "relative flex min-h-0 flex-1 flex-col transition-shadow duration-150",
+                  isFullscreen ? "" : "rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08),0_8px_32px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04]",
                   dnd.isOverIframe && "ring-2 ring-primary/40 ring-offset-1",
                 )}>
                   <HtmlFrame
@@ -1657,6 +1658,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     interactionMode="browsing"
                     anchorResolutionItems={anchorResolutionItems}
                     onAnchorResolution={handleAnchorResolution}
+                    borderless={isFullscreen}
                     onFrameReady={iframe.handleFrameReady}
                   />
 

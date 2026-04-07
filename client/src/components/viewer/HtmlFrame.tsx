@@ -329,6 +329,7 @@ export const HtmlFrame = forwardRef<
     anchorResolutionItems?: { id: string; anchor: Anchor }[];
     onAnchorResolution?: (resolved: Record<string, boolean>) => void;
     onFrameReady?: () => void;
+    borderless?: boolean;
   }
 >(
   function HtmlFrame(
@@ -341,6 +342,7 @@ export const HtmlFrame = forwardRef<
       anchorResolutionItems = [],
       onAnchorResolution,
       onFrameReady,
+      borderless,
     },
     ref,
   ) {
@@ -392,7 +394,8 @@ export const HtmlFrame = forwardRef<
   }
 
   const artboardChrome = cn(
-    "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-md ring-1 ring-black/5 dark:bg-card dark:ring-white/10",
+    "flex min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-card",
+    borderless ? "" : "rounded-lg shadow-md ring-1 ring-black/5 dark:ring-white/10",
   );
 
   if (loading) {
