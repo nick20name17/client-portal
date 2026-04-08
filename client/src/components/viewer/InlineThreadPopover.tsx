@@ -339,7 +339,7 @@ export function InlineThreadPopover({
                 onClick={() => {
                   const newResolved = !comment.resolved;
                   dispatch({ type: "SET_RESOLVE_PENDING", payload: true });
-                  void Promise.resolve(onResolve(comment.id, newResolved)).finally(() => dispatch({ type: "SET_RESOLVE_PENDING", payload: false }));
+                  void Promise.all(allThreads.map((t) => Promise.resolve(onResolve(t.id, newResolved)))).finally(() => dispatch({ type: "SET_RESOLVE_PENDING", payload: false }));
                   if (newResolved) onClose();
                 }}
                 disabled={!canResolve(currentUser) || resolvePending}
