@@ -48,7 +48,7 @@ export function NewCommentComposePopover({
       {/* Author row */}
       <div className="flex items-center gap-2">
         {currentUser ? (
-          <UserAvatar name={currentUser.name} image={currentUser.image ?? null} className="size-6 shrink-0" />
+          <UserAvatar name={currentUser.name} image={currentUser.image ?? null} userId={currentUser.id} className="size-6 shrink-0" />
         ) : null}
         <span className="text-[12px] font-medium text-muted-foreground">New comment</span>
       </div>

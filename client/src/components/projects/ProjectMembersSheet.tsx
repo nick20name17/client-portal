@@ -110,7 +110,7 @@ export function ProjectMembersSheet({
                     key={m.id}
                     className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-bg-hover"
                   >
-                    <UserAvatar name={m.user.name} image={m.user.image} className="size-8 shrink-0" />
+                    <UserAvatar name={m.user.name} image={m.user.image} userId={m.userId} className="size-8 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-medium text-foreground">{m.user.name}</p>
                       <RoleBadge role={m.user.role as Role} className="mt-0.5" />
@@ -168,7 +168,7 @@ export function ProjectMembersSheet({
                         key={u.id}
                         className="flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-bg-hover"
                       >
-                        <UserAvatar name={u.name ?? u.email ?? "?"} image={u.image} className="size-7 shrink-0" />
+                        <UserAvatar name={u.name ?? u.email ?? "?"} image={u.image} userId={u.id} className="size-7 shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-medium text-foreground leading-tight">
                             {u.name ?? "—"}
