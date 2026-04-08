@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { RoleGate } from "@/components/shared/RoleGate";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { authClient } from "@/lib/auth-client";
 import { RoleBadge } from "@/components/shared/RoleBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,7 @@ export const Route = createFileRoute("/_authenticated/users/")({
 
 function UsersPage() {
   return (
-    <RoleGate allow={["admin"]}>
+    <RoleGate allow={["admin", "manager"]}>
       <UsersContent />
     </RoleGate>
   );
@@ -196,23 +197,28 @@ function UsersTable({
 }: {
   users: User[];
   companyName: (id: number | null) => string;
-  onEdit: (u: User) => void;
-  onDelete: (u: User) => void;
+  onEdit?: (u: User) => void;
+  onDelete?: (u: User) => void;
 }) {
+  const showActions = !!(onEdit || onDelete);
   return (
     <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
-      <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-border px-5 py-2.5 text-[12px] font-medium text-text-tertiary">
+      <div className={cn(
+        "grid items-center gap-4 border-b border-border px-5 py-2.5 text-[12px] font-medium text-text-tertiary",
+        showActions ? "grid-cols-[1fr_auto_auto_auto_auto]" : "grid-cols-[1fr_auto_auto_auto]",
+      )}>
         <span>User</span>
         <span className="hidden w-40 sm:block">Email</span>
         <span className="hidden w-20 sm:block">Role</span>
         <span className="hidden w-28 sm:block">Company</span>
-        <span className="w-8" />
+        {showActions ? <span className="w-8" /> : null}
       </div>
       {users.map((u, i) => (
         <div
           key={u.id}
           className={cn(
-            "grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 px-5 py-3 transition-colors hover:bg-bg-hover",
+            "grid items-center gap-4 px-5 py-3 transition-colors hover:bg-bg-hover",
+            showActions ? "grid-cols-[1fr_auto_auto_auto_auto]" : "grid-cols-[1fr_auto_auto_auto]",
             i < users.length - 1 && "border-b border-border",
           )}
         >
@@ -232,25 +238,31 @@ function UsersTable({
           <span className="hidden w-28 truncate text-[13px] text-text-secondary sm:block">
             {companyName(u.companyId)}
           </span>
-          <div className="w-8 flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <MoreHorizontal className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-36">
-                <DropdownMenuItem onClick={() => onEdit(u)}>
-                  <Pencil className="size-4" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onClick={() => onDelete(u)}>
-                  <Trash2 className="size-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          {showActions ? (
+            <div className="w-8 flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm">
+                    <MoreHorizontal className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36">
+                  {onEdit ? (
+                    <DropdownMenuItem onClick={() => onEdit(u)}>
+                      <Pencil className="size-4" />
+                      Edit
+                    </DropdownMenuItem>
+                  ) : null}
+                  {onDelete ? (
+                    <DropdownMenuItem variant="destructive" onClick={() => onDelete(u)}>
+                      <Trash2 className="size-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
@@ -262,6 +274,7 @@ function UserFormDialog({
   editing,
   form,
   companies,
+  isAdmin,
   isSaving,
   onFormChange,
   onSave,
@@ -271,6 +284,7 @@ function UserFormDialog({
   editing: User | null;
   form: UserFormState;
   companies: { id: number; name: string }[] | undefined;
+  isAdmin: boolean;
   isSaving: boolean;
   onFormChange: (patch: Partial<UserFormState>) => void;
   onSave: () => void;
@@ -323,42 +337,46 @@ function UserFormDialog({
               </Field>
             </>
           ) : null}
-          <Field>
-            <FieldLabel>Role</FieldLabel>
-            <Select
-              value={form.role}
-              onValueChange={(v) => onFormChange({ role: v as Role })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="manager">Manager</SelectItem>
-                <SelectItem value="client">Client</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          {form.role !== "admin" ? (
-            <Field>
-              <FieldLabel>Company</FieldLabel>
-              <Select
-                value={form.companyId || "__none"}
-                onValueChange={(v) => onFormChange({ companyId: v === "__none" ? "" : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="No company" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">No company</SelectItem>
-                  {companies?.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+          {isAdmin ? (
+            <>
+              <Field>
+                <FieldLabel>Role</FieldLabel>
+                <Select
+                  value={form.role}
+                  onValueChange={(v) => onFormChange({ role: v as Role })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="client">Client</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              {form.role !== "admin" ? (
+                <Field>
+                  <FieldLabel>Company</FieldLabel>
+                  <Select
+                    value={form.companyId || "__none"}
+                    onValueChange={(v) => onFormChange({ companyId: v === "__none" ? "" : v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="No company" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">No company</SelectItem>
+                      {companies?.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : null}
+            </>
           ) : null}
         </div>
         <DialogFooter>
@@ -407,6 +425,10 @@ function DeleteUserDialog({
 // --- Main component ---
 
 function UsersContent() {
+  const { data: session } = authClient.useSession();
+  const appRole = (session?.user as { role?: string } | undefined)?.role;
+  const isAdmin = appRole === "admin";
+
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [companyFilter, setCompanyFilter] = useState<string>("");
   const [q, setQ] = useState("");
@@ -435,14 +457,15 @@ function UsersContent() {
     companies?.find((c) => c.id === id)?.name ?? "—";
 
   async function save() {
-    const resolvedCompanyId = state.form.role === "admin" ? null : state.form.companyId ? Number(state.form.companyId) : null;
+    const role = isAdmin ? state.form.role : "client";
+    const resolvedCompanyId = role === "admin" ? null : isAdmin ? (state.form.companyId ? Number(state.form.companyId) : null) : null;
     const trimmedName = state.form.name.trim();
     const trimmedEmail = state.form.email.trim();
     try {
       if (state.editing) {
         await update.mutateAsync({
           id: state.editing.id,
-          role: state.form.role,
+          role,
           companyId: resolvedCompanyId,
         });
         toast.success("User updated");
@@ -454,7 +477,7 @@ function UsersContent() {
         await create.mutateAsync({
           name: trimmedName,
           email: trimmedEmail,
-          role: state.form.role,
+          role,
           tmpPassword: state.form.tmpPassword,
           companyId: resolvedCompanyId,
         });
@@ -494,15 +517,27 @@ function UsersContent() {
         </Button>
       </div>
 
-      <UsersFilterBar
-        q={q}
-        onQChange={setQ}
-        roleFilter={roleFilter}
-        onRoleFilterChange={setRoleFilter}
-        companyFilter={companyFilter}
-        onCompanyFilterChange={setCompanyFilter}
-        companies={companies}
-      />
+      {isAdmin ? (
+        <UsersFilterBar
+          q={q}
+          onQChange={setQ}
+          roleFilter={roleFilter}
+          onRoleFilterChange={setRoleFilter}
+          companyFilter={companyFilter}
+          onCompanyFilterChange={setCompanyFilter}
+          companies={companies}
+        />
+      ) : (
+        <div className="relative max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-text-tertiary" />
+          <Input
+            placeholder="Search name or email…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="pl-8 h-8 text-[13px]"
+          />
+        </div>
+      )}
 
       {isPending ? (
         <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
@@ -535,8 +570,8 @@ function UsersContent() {
         <UsersTable
           users={filtered}
           companyName={companyName}
-          onEdit={(u) => dispatch({ type: "OPEN_EDIT", payload: u })}
-          onDelete={(u) => dispatch({ type: "SET_DELETE_TARGET", payload: u })}
+          onEdit={isAdmin ? (u) => dispatch({ type: "OPEN_EDIT", payload: u }) : undefined}
+          onDelete={isAdmin ? (u) => dispatch({ type: "SET_DELETE_TARGET", payload: u }) : undefined}
         />
       )}
 
@@ -545,6 +580,7 @@ function UsersContent() {
         editing={state.editing}
         form={state.form}
         companies={companies}
+        isAdmin={isAdmin}
         isSaving={isSaving}
         onFormChange={(patch) => dispatch({ type: "SET_FORM", payload: patch })}
         onSave={() => void save()}

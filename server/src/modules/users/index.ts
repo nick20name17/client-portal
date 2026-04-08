@@ -9,15 +9,15 @@ export const users = new Elysia({
   detail: { tags: ["Users"], ...protectedApiDetail },
 })
   .use(authMiddleware)
-  .get("/", ({ query }) => UserService.list(query), {
+  .get("/", ({ user, query }) => UserService.list(user, query), {
     query: UserModelSchema.query,
     response: { 200: UserModelSchema.listResponse },
-    admin: true,
+    auth: true,
   })
-  .post("/", ({ body }) => UserService.create(body), {
+  .post("/", ({ user, body }) => UserService.create(user, body), {
     body: UserModelSchema.create,
     response: { 200: UserModelSchema.select },
-    admin: true,
+    auth: true,
   })
   .patch("/:id", ({ params, body }) => UserService.update(params.id, body), {
     params: UserModelSchema.params,

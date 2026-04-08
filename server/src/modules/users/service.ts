@@ -1,12 +1,16 @@
 import { db } from "@/db";
 import { account, user } from "@/db/schema/auth";
 import { companies } from "@/db/schema/companies";
-import type { UserRole } from "@/types";
+import type { SessionUser, UserRole } from "@/types";
 import { generateId } from "@better-auth/core/utils/id";
 import { hashPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
 import { status } from "elysia";
 import type { UserModel } from "./model";
+
+function forbidden(): never {
+  throw status(403, { error: "Forbidden" });
+}
 
 function parseRole(r: string): UserRole {
   if (r === "admin" || r === "manager" || r === "client") return r;
@@ -14,8 +18,13 @@ function parseRole(r: string): UserRole {
 }
 
 export const UserService = {
-  async list(query: UserModel["query"]) {
+  async list(caller: SessionUser, query: UserModel["query"]) {
+    if (caller.role !== "admin" && caller.role !== "manager") forbidden();
     const conditions = [];
+    if (caller.role === "manager") {
+      if (!caller.companyId) forbidden();
+      conditions.push(eq(user.companyId, caller.companyId));
+    }
     if (query.role) conditions.push(eq(user.role, query.role));
     if (query.companyId) conditions.push(eq(user.companyId, query.companyId));
     const where =
@@ -27,7 +36,13 @@ export const UserService = {
     return db.select().from(user).where(where).orderBy(user.createdAt);
   },
 
-  async create(body: UserModel["create"]) {
+  async create(caller: SessionUser, body: UserModel["create"]) {
+    if (caller.role !== "admin" && caller.role !== "manager") forbidden();
+    if (caller.role === "manager") {
+      if (parseRole(body.role) !== "client") forbidden();
+      if (!caller.companyId) forbidden();
+      body.companyId = caller.companyId as unknown as number;
+    }
     const email = body.email.trim().toLowerCase();
     const existing = await db
       .select({ id: user.id })

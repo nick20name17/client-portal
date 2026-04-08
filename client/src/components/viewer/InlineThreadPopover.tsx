@@ -244,7 +244,9 @@ export function InlineThreadPopover({
   const inputRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const allThreads = [comment, ...(relatedComments ?? [])];
+  const allThreads = [comment, ...(relatedComments ?? [])].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
   const totalReplies = allThreads.reduce((n, t) => n + (t.replies?.length ?? 0), 0);
   const hasReplies = (comment.replies?.length ?? 0) > 0;
 

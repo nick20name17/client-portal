@@ -11,7 +11,7 @@ export const companies = new Elysia({
   .use(authMiddleware)
   .get("/", () => CompanyService.list(), {
     response: { 200: CompanyModelSchema.listResponse },
-    admin: true,
+    auth: true,
   })
   .post("/", ({ body }) => CompanyService.create(body), {
     body: CompanyModelSchema.create,

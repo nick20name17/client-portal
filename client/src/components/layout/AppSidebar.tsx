@@ -37,7 +37,7 @@ const mainNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { href: "/companies", label: "Companies", icon: Building2, iconBg: "bg-blue-500", adminOnly: true },
-  { href: "/users", label: "Users", icon: Users, iconBg: "bg-indigo-500", adminOnly: true },
+  { href: "/users", label: "Users", icon: Users, iconBg: "bg-indigo-500" },
   { href: "/tags", label: "Tags", icon: Tags, iconBg: "bg-violet-500", adminOnly: true },
 ];
 
@@ -122,13 +122,15 @@ export function AppSidebar() {
           </div>
 
           {/* Admin nav */}
-          {role === "admin" ? (
+          {role === "admin" || role === "manager" ? (
             <>
               <div className="my-2 border-t border-black/6 dark:border-white/6" />
               <div className="flex flex-col gap-px">
-                {adminNav.map((item) => (
-                  <ColoredNavLink key={item.href} item={item} isActive={isActive(item.href)} />
-                ))}
+                {adminNav
+                  .filter((item) => !item.adminOnly || role === "admin")
+                  .map((item) => (
+                    <ColoredNavLink key={item.href} item={item} isActive={isActive(item.href)} />
+                  ))}
               </div>
             </>
           ) : null}

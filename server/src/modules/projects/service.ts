@@ -120,10 +120,7 @@ export const ProjectService = {
   },
 
   async create(user: SessionUser, body: ProjectModel["create"]) {
-    if (user.role === "client") forbidden();
-    if (user.role === "manager") {
-      if (!user.companyId || user.companyId !== body.companyId) forbidden();
-    }
+    if (user.role !== "admin") forbidden();
     const [comp] = await db
       .select({ id: companies.id, name: companies.name })
       .from(companies)
@@ -293,6 +290,14 @@ export const ProjectService = {
 
   async removeMember(user: SessionUser, projectId: string, memberUserId: string) {
     if (!(await canAddMember(user, projectId))) forbidden();
+    if (user.role === "manager") {
+      const [target] = await db
+        .select({ role: userTable.role })
+        .from(userTable)
+        .where(eq(userTable.id, memberUserId))
+        .limit(1);
+      if (!target || target.role !== "client") forbidden();
+    }
     const [row] = await db
       .delete(projectMembers)
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, memberUserId)))

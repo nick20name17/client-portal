@@ -70,7 +70,7 @@ export function useCreateComment(projectId: string | undefined, currentUser?: Us
               : c
           );
         }
-        return [...old, tempComment];
+        return [tempComment, ...old];
       });
       return { snapshots };
     },

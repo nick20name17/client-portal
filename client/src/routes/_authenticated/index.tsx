@@ -561,7 +561,7 @@ function DashboardPage() {
             {projects ? `${projects.length} project${projects.length === 1 ? "" : "s"}` : "Loading…"}
           </p>
         </div>
-        {canManage ? (
+        {isAdmin ? (
           <Button onClick={openCreate} variant="outline" size="sm">
             <Plus className="size-3.5" />
             New project
@@ -588,12 +588,12 @@ function DashboardPage() {
           icon={FolderOpen}
           title="No projects yet"
           description={
-            canManage
+            isAdmin
               ? "Create your first project and sync HTML from GitHub."
               : "You have not been added to any project yet."
           }
         >
-          {canManage ? (
+          {isAdmin ? (
             <Button onClick={openCreate}>
               <Plus className="size-4" />
               Create your first project

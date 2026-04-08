@@ -40,7 +40,7 @@ export function ProjectMembersSheet({
   const currentUserId = sessionUser?.id;
 
   const { data: members, isPending } = useProjectMembers(projectId ?? undefined);
-  const { data: allUsers } = useUsers(undefined, { enabled: appRole === "admin" });
+  const { data: allUsers } = useUsers(undefined, { enabled: appRole === "admin" || appRole === "manager" });
   const add = useAddProjectMember();
   const remove = useRemoveProjectMember();
 
@@ -115,7 +115,8 @@ export function ProjectMembersSheet({
                       <p className="truncate text-[13px] font-medium text-foreground">{m.user.name}</p>
                       <RoleBadge role={m.user.role as Role} className="mt-0.5" />
                     </div>
-                    {m.userId !== currentUserId ? (
+                    {m.userId !== currentUserId &&
+                    (appRole === "admin" || (appRole === "manager" && m.user.role === "client")) ? (
                       <button
                         type="button"
                         onClick={() => void removeMember(m.userId)}
@@ -134,7 +135,7 @@ export function ProjectMembersSheet({
           </div>
 
           {/* Add people section */}
-          {appRole === "admin" ? (
+          {appRole === "admin" || appRole === "manager" ? (
             <div className="border-t border-border">
               {/* Search */}
               <div className="px-3 pt-3 pb-2">
@@ -182,7 +183,7 @@ export function ProjectMembersSheet({
                           variant="outline"
                           className="size-7 shrink-0"
                           disabled={add.isPending}
-                          onClick={() => void addMember(u.id, u.role as "manager" | "client")}
+                          onClick={() => void addMember(u.id, appRole === "manager" ? "client" : u.role as "manager" | "client")}
                           aria-label={`Add ${u.name}`}
                         >
                           <UserPlus className="size-3.5" />
@@ -193,11 +194,7 @@ export function ProjectMembersSheet({
                 )}
               </div>
             </div>
-          ) : (
-            <p className="border-t border-border px-5 py-4 text-[13px] text-text-secondary">
-              Only admins can add users from the directory.
-            </p>
-          )}
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
