@@ -117,11 +117,18 @@ const BRIDGE_SCRIPT = `
     if (interactionMode !== "commenting") return;
   }
 
-  // Always block anchor navigation — prevents links loading the app inside the iframe.
+  // Block anchor navigation; relay .html page links to parent as FILE_NAV.
   document.addEventListener("click", function(e){
     var t = e.target;
     while (t && t.tagName !== "A") t = t.parentElement;
-    if (t && t.tagName === "A") { e.preventDefault(); e.stopPropagation(); }
+    if (t && t.tagName === "A") {
+      e.preventDefault();
+      e.stopPropagation();
+      var href = t.getAttribute("href") || "";
+      if (href && !href.startsWith("http") && !href.startsWith("//") && !href.startsWith("#") && /\.html?$/i.test(href)) {
+        window.parent.postMessage({ type: "FILE_NAV", href: href }, "*");
+      }
+    }
   }, true);
 
   document.addEventListener("contextmenu", function(e){
@@ -329,6 +336,7 @@ export const HtmlFrame = forwardRef<
     anchorResolutionItems?: { id: string; anchor: Anchor }[];
     onAnchorResolution?: (resolved: Record<string, boolean>) => void;
     onFrameReady?: () => void;
+    onFileNav?: (href: string) => void;
     borderless?: boolean;
   }
 >(
@@ -342,6 +350,7 @@ export const HtmlFrame = forwardRef<
       anchorResolutionItems = [],
       onAnchorResolution,
       onFrameReady,
+      onFileNav,
       borderless,
     },
     ref,
@@ -387,6 +396,17 @@ export const HtmlFrame = forwardRef<
 
     return () => window.removeEventListener("message", onMsg);
   }, [frameReady, anchorResolutionItems, onAnchorResolution]);
+
+  useEffect(() => {
+    if (!onFileNav) return;
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type === "FILE_NAV" && typeof e.data.href === "string") {
+        onFileNav!(e.data.href);
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [onFileNav]);
 
   function handleLoad() {
     setLoadedSrcDoc(srcDoc);

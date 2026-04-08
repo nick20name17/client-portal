@@ -45,7 +45,7 @@ import {
   useComments,
 } from "@/api/comments/query";
 import { useFileVersions, useCheckNewVersions, FILE_VERSION_KEYS } from "@/api/file-versions/query";
-import { useProjectFiles, useProject, useProjectMembers } from "@/api/projects/query";
+import { useProjectFiles, useProject, useProjectMembers, useSyncProjectFiles } from "@/api/projects/query";
 import { useProjectWS } from "@/api/ws/use-project-ws";
 import { useTags } from "@/api/tags/query";
 import { apiText, apiErrorMsg } from "@/lib/api";
@@ -914,7 +914,7 @@ function ViewerHeaderBar({
                   : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
               )}
             >
-              {f.path.split("/").pop() ?? f.path}
+              {formatFileName(f.path)}
             </button>
           );
         })}
@@ -1082,6 +1082,7 @@ function useProjectViewerData(projectId: string) {
   const user = authUser as import("@/types").User | null;
   const { data: project } = useProject(projectId);
   const { data: files, isPending: filesLoading } = useProjectFiles(projectId);
+  const syncFiles = useSyncProjectFiles();
   const { data: projectMembersData } = useProjectMembers(project?.id);
   const mentionMembers = (projectMembersData ?? []).map((m) => ({
     id: m.userId,
@@ -1412,10 +1413,19 @@ function useProjectViewerData(projectId: string) {
     pendingGhostAnchorRef, pendingContextMenuFractionRef, contextMenuTriggerRef,
     selectedTagIds, onSelectThread, toggleTag,
     showThreadPopover, showComposePopover, popoverDisplay,
+    syncFiles,
   };
 }
 
 /* ──────────────── Extracted sub-components ──────────────── */
+
+function formatFileName(path: string) {
+  const name = path.split("/").pop() ?? path;
+  return name
+    .replace(/\.html?$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function MobileFileSelector({
   files,
@@ -1440,7 +1450,7 @@ function MobileFileSelector({
       >
         {files.map((f) => (
           <option key={f.id} value={f.id}>
-            {f.path}
+            {formatFileName(f.path)}
           </option>
         ))}
       </select>
@@ -1568,6 +1578,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     pendingGhostAnchorRef, pendingContextMenuFractionRef, contextMenuTriggerRef,
     selectedTagIds, onSelectThread, toggleTag,
     showThreadPopover, showComposePopover, popoverDisplay,
+    syncFiles,
   } = useProjectViewerData(projectId);
 
   async function toggleFullscreen() {
@@ -1642,7 +1653,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
             <div className={cn("relative flex h-full min-h-0 min-w-0 flex-1 flex-col", isFullscreen ? "p-0" : "pt-24 px-3 pb-3 md:pt-24 md:px-4 md:pb-4")}>
               {!filesLoading && !files?.length ? (
-                <p className="text-sm text-muted-foreground">No HTML files. Run sync from the projects list.</p>
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                  <p className="text-sm text-muted-foreground">No HTML files found.</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={syncFiles.isPending}
+                    onClick={() => syncFiles.mutate(projectId)}
+                  >
+                    {syncFiles.isPending ? "Syncing…" : "Sync files"}
+                  </Button>
+                </div>
               ) : (
                 <div className={cn(
                   "relative flex min-h-0 flex-1 flex-col transition-shadow duration-150",
@@ -1660,6 +1681,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     onAnchorResolution={handleAnchorResolution}
                     borderless={isFullscreen}
                     onFrameReady={iframe.handleFrameReady}
+                    onFileNav={(href) => {
+                      const name = href.split("/").pop() ?? href;
+                      const target = files?.find((f) => (f.path.split("/").pop() ?? f.path) === name);
+                      if (target) void setFileId(String(target.id));
+                    }}
                   />
 
                   {/* Re-link overlay */}
