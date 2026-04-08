@@ -97,8 +97,8 @@ export function usePatchComment(projectId: string | undefined) {
         : patch;
       qc.setQueriesData<Comment[]>({ queryKey: key }, (old) =>
         old?.map((c) => {
-          if (c.id === id) return { ...c, ...optimistic };
-          return { ...c, replies: c.replies?.map((r) => r.id === id ? { ...r, ...optimistic } : r) };
+          if (c.id === id) return { ...c, ...optimistic } as Comment;
+          return { ...c, replies: c.replies?.map((r) => r.id === id ? { ...r, ...optimistic } as Comment : r) };
         })
       );
       return { snapshots };

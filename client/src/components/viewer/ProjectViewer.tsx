@@ -434,7 +434,7 @@ function useViewerDnd({
     setReLinkCommentId(id);
   }, []);
 
-  const draggedComment = reLinkCommentId ? topLevelComments.find((c) => c.id === reLinkCommentId) : null;
+  const draggedComment = reLinkCommentId ? topLevelComments.find((c) => c.id === reLinkCommentId) ?? null : null;
 
   return {
     reLinkCommentId,
