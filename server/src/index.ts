@@ -1,5 +1,6 @@
 import { pool } from "@/db";
 import { auth, cors, openapi } from "@/lib";
+import { logger } from "@/lib/logger";
 import { comments, companies, projects, ws, stats, tags, users } from "@/modules";
 import { setWsServer } from "@/plugins/ws";
 import { env } from "@/utils/env";
@@ -42,4 +43,4 @@ const app = new Elysia({ prefix: "/api" })
   .listen(env.PORT ?? 3000);
 
 if (app.server) setWsServer(app.server);
-console.log(`API running at ${app.server?.hostname}:${app.server?.port}`);
+logger.log(`API running at ${app.server?.hostname}:${app.server?.port}`);

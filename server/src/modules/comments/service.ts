@@ -4,6 +4,7 @@ import { commentTags, comments } from "@/db/schema/comments";
 import { fileVersions, projectFiles } from "@/db/schema/projects";
 import { tags } from "@/db/schema/tags";
 import { canViewProject, getProjectMemberRole } from "@/lib/access";
+import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { parseMentions, sendEmailNotification } from "@/lib/send-email-notification";
 import { wsEmit, wsEvents } from "@/plugins/ws";
@@ -222,13 +223,13 @@ export const CommentService = {
       type: body.parentId ? "comment.reply" : "comment.created",
       commentId: row.id,
       actorId: user.id,
-    }).catch((err) => console.error("Email failed:", err));
+    }).catch((err) => logger.error("Email failed:", err));
     if (parseMentions(body.body).length > 0) {
       sendEmailNotification({
         type: "comment.mention",
         commentId: row.id,
         actorId: user.id,
-      }).catch((err) => console.error("Email failed:", err));
+      }).catch((err) => logger.error("Email failed:", err));
     }
     wsEmit(projectId, wsEvents.commentCreated, {
       commentId: row.id,
@@ -278,7 +279,7 @@ export const CommentService = {
         type: "comment.resolved",
         commentId: c.id,
         actorId: user.id,
-      }).catch((err) => console.error("Email failed:", err));
+      }).catch((err) => logger.error("Email failed:", err));
       wsEmit(c.projectId, wsEvents.commentResolved, {
         commentId: c.id,
         projectId: c.projectId,
@@ -289,7 +290,7 @@ export const CommentService = {
           type: "comment.mention",
           commentId: c.id,
           actorId: user.id,
-        }).catch((err) => console.error("Email failed:", err));
+        }).catch((err) => logger.error("Email failed:", err));
       }
       wsEmit(c.projectId, wsEvents.commentUpdated, {
         commentId: c.id,

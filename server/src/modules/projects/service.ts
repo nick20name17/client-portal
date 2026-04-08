@@ -5,6 +5,7 @@ import { comments } from "@/db/schema/comments";
 import { companies } from "@/db/schema/companies";
 import { projectFiles, projectMembers, projects } from "@/db/schema/projects";
 import { canViewProject, getProjectMemberRole, getProjectOrNull } from "@/lib/access";
+import { logger } from "@/lib/logger";
 import { sendEmailNotification } from "@/lib/send-email-notification";
 import { buildGithubRawUrl, fetchGithubTreeRecursive, parseGithubRepoUrl } from "@/lib/github";
 import { FileVersionService } from "./versions/service";
@@ -284,7 +285,7 @@ export const ProjectService = {
       userId: body.userId,
       projectId,
       actorId: user.id,
-    }).catch((err) => console.error("Email failed:", err));
+    }).catch((err) => logger.error("Email failed:", err));
     return row;
   },
 
@@ -336,7 +337,7 @@ export const ProjectService = {
     try {
       tree = await fetchGithubTreeRecursive(owner, repo, "HEAD");
     } catch (e) {
-      console.error("[syncFiles] GitHub tree fetch failed:", e);
+      logger.error("[syncFiles] GitHub tree fetch failed:", e);
       throw status(502, {
         error: "GitHub sync failed",
         detail: "Upstream API error",
@@ -370,7 +371,7 @@ export const ProjectService = {
       await Promise.all(
         upsertedFiles.map((f) =>
           FileVersionService.syncVersionsForFile(p.id, f.id, f.path, owner, repo, user.id)
-            .catch((e) => console.error(`[syncFiles] version sync failed for ${f.path}:`, e)),
+            .catch((e) => logger.error(`[syncFiles] version sync failed for ${f.path}:`, e)),
         ),
       );
     }

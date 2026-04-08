@@ -3,6 +3,7 @@ import { comments } from "@/db/schema/comments";
 import { fileVersions, projectFiles } from "@/db/schema/projects";
 import { canViewProject, getProjectMemberRole, getProjectOrNull } from "@/lib/access";
 import { fetchFileCommits, parseGithubRepoUrl } from "@/lib/github";
+import { logger } from "@/lib/logger";
 import type { SessionUser } from "@/types";
 import { and, count, desc, eq } from "drizzle-orm";
 import { status } from "elysia";
@@ -179,7 +180,7 @@ export const FileVersionService = {
           );
           return { fileId: f.id, filePath: f.path, newCount: n ?? 0 };
         } catch (e) {
-          console.error(`[checkNewVersions] ${f.path}:`, e);
+          logger.error(`[checkNewVersions] ${f.path}:`, e);
           return { fileId: f.id, filePath: f.path, newCount: 0 };
         }
       }),
