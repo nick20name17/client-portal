@@ -23,7 +23,10 @@ export const UserModelSchema = {
     companyId: t.Optional(t.Union([t.Number(), t.Null()])),
   }),
   select: userSelect,
-  listResponse: t.Array(userSelect),
+  listResponse: t.Array(t.Intersect([
+    userSelect,
+    t.Object({ projects: t.Array(t.Object({ id: t.Number(), name: t.String() })) }),
+  ])),
   notFound: t.Object({ error: t.Literal("Not found") }),
   duplicateEmail: t.Object({
     error: t.Literal("User with this email already exists"),

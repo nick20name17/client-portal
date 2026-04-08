@@ -11,6 +11,7 @@ export interface User {
   emailVerified?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  projects?: { id: number; name: string }[];
 }
 
 export interface Company {

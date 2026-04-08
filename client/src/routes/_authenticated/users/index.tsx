@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useReducer, useState } from "react";
-import { MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { FolderKanban, MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { RoleGate } from "@/components/shared/RoleGate";
@@ -42,7 +42,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { useCompanies } from "@/api/companies/query";
 import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "@/api/users/query";
 import type { Role, User } from "@/types";
@@ -192,33 +200,38 @@ function UsersFilterBar({
 function UsersTable({
   users,
   companyName,
+  onRowClick,
   onEdit,
   onDelete,
 }: {
   users: User[];
   companyName: (id: number | null) => string;
+  onRowClick?: (u: User) => void;
   onEdit?: (u: User) => void;
   onDelete?: (u: User) => void;
 }) {
   const showActions = !!(onEdit || onDelete);
+  const cols = showActions
+    ? "grid-cols-[1fr_auto_auto_auto_auto_auto]"
+    : "grid-cols-[1fr_auto_auto_auto_auto]";
   return (
     <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
-      <div className={cn(
-        "grid items-center gap-4 border-b border-border px-5 py-2.5 text-[12px] font-medium text-text-tertiary",
-        showActions ? "grid-cols-[1fr_auto_auto_auto_auto]" : "grid-cols-[1fr_auto_auto_auto]",
-      )}>
+      <div className={cn("grid items-center gap-4 border-b border-border px-5 py-2.5 text-[12px] font-medium text-text-tertiary", cols)}>
         <span>User</span>
         <span className="hidden w-40 sm:block">Email</span>
         <span className="hidden w-20 sm:block">Role</span>
         <span className="hidden w-28 sm:block">Company</span>
+        <span className="hidden w-36 sm:block">Projects</span>
         {showActions ? <span className="w-8" /> : null}
       </div>
       {users.map((u, i) => (
         <div
           key={u.id}
+          onClick={() => onRowClick?.(u)}
           className={cn(
             "grid items-center gap-4 px-5 py-3 transition-colors hover:bg-bg-hover",
-            showActions ? "grid-cols-[1fr_auto_auto_auto_auto]" : "grid-cols-[1fr_auto_auto_auto]",
+            cols,
+            onRowClick && "cursor-pointer",
             i < users.length - 1 && "border-b border-border",
           )}
         >
@@ -238,11 +251,20 @@ function UsersTable({
           <span className="hidden w-28 truncate text-[13px] text-text-secondary sm:block">
             {companyName(u.companyId)}
           </span>
+          <span className="hidden w-36 sm:flex gap-1 flex-wrap">
+            {u.projects?.slice(0, 2).map((p) => (
+              <Badge key={p.id} variant="secondary" className="text-[11px] truncate max-w-[7rem]">{p.name}</Badge>
+            ))}
+            {(u.projects?.length ?? 0) > 2 ? (
+              <Badge variant="outline" className="text-[11px]">+{u.projects!.length - 2}</Badge>
+            ) : null}
+            {!u.projects?.length ? <span className="text-[12px] text-text-tertiary">&mdash;</span> : null}
+          </span>
           {showActions ? (
             <div className="w-8 flex justify-end">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm">
+                  <Button variant="ghost" size="icon-sm" onClick={(e) => e.stopPropagation()}>
                     <MoreHorizontal className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -432,6 +454,7 @@ function UsersContent() {
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [companyFilter, setCompanyFilter] = useState<string>("");
   const [q, setQ] = useState("");
+  const [detailUser, setDetailUser] = useState<User | null>(null);
 
   const { data: companies } = useCompanies();
   const { data, isPending } = useUsers({
@@ -570,6 +593,7 @@ function UsersContent() {
         <UsersTable
           users={filtered}
           companyName={companyName}
+          onRowClick={setDetailUser}
           onEdit={isAdmin ? (u) => dispatch({ type: "OPEN_EDIT", payload: u }) : undefined}
           onDelete={isAdmin ? (u) => dispatch({ type: "SET_DELETE_TARGET", payload: u }) : undefined}
         />
@@ -592,6 +616,49 @@ function UsersContent() {
         onClose={() => dispatch({ type: "SET_DELETE_TARGET", payload: null })}
         onConfirm={() => void confirmDelete()}
       />
+
+      <Sheet open={!!detailUser} onOpenChange={(o) => !o && setDetailUser(null)}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          {detailUser ? (
+            <>
+              <SheetHeader>
+                <div className="flex items-center gap-3">
+                  <UserAvatar name={detailUser.name} image={detailUser.image} userId={detailUser.id} className="size-10" />
+                  <div className="min-w-0 flex-1">
+                    <SheetTitle className="truncate">{detailUser.name}</SheetTitle>
+                    <SheetDescription className="truncate">{detailUser.email}</SheetDescription>
+                  </div>
+                </div>
+              </SheetHeader>
+              <div className="mt-6 space-y-5 px-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Role</span>
+                  <RoleBadge role={detailUser.role} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Company</span>
+                  <span className="text-[13px] text-foreground">{companyName(detailUser.companyId)}</span>
+                </div>
+                <div>
+                  <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Projects</span>
+                  {detailUser.projects?.length ? (
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      {detailUser.projects.map((p) => (
+                        <div key={p.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                          <FolderKanban className="size-3.5 shrink-0 text-text-tertiary" />
+                          <span className="truncate text-[13px] font-medium text-foreground">{p.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[13px] text-text-secondary">No projects</p>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

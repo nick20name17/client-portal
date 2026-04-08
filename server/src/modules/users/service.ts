@@ -1,10 +1,11 @@
 import { db } from "@/db";
 import { account, user } from "@/db/schema/auth";
 import { companies } from "@/db/schema/companies";
+import { projectMembers, projects } from "@/db/schema/projects";
 import type { SessionUser, UserRole } from "@/types";
 import { generateId } from "@better-auth/core/utils/id";
 import { hashPassword } from "better-auth/crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { status } from "elysia";
 import type { UserModel } from "./model";
 
@@ -33,7 +34,28 @@ export const UserService = {
         : conditions.length === 1
           ? conditions[0]
           : and(...conditions);
-    return db.select().from(user).where(where).orderBy(user.createdAt);
+    const rows = await db.select().from(user).where(where).orderBy(user.createdAt);
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.id);
+    const pmRows = await db
+      .select({
+        userId: projectMembers.userId,
+        projectId: projects.id,
+        projectName: projects.name,
+      })
+      .from(projectMembers)
+      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+      .where(and(inArray(projectMembers.userId, ids), isNull(projects.archivedAt)));
+
+    const projectsByUser = new Map<string, { id: number; name: string }[]>();
+    for (const pm of pmRows) {
+      const list = projectsByUser.get(pm.userId) ?? [];
+      list.push({ id: pm.projectId, name: pm.projectName });
+      projectsByUser.set(pm.userId, list);
+    }
+
+    return rows.map((r) => ({ ...r, projects: projectsByUser.get(r.id) ?? [] }));
   },
 
   async create(caller: SessionUser, body: UserModel["create"]) {
