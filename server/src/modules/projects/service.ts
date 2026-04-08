@@ -431,6 +431,10 @@ export const ProjectService = {
         error: "Upstream fetch failed",
       } satisfies ProjectModel["upstreamFetch"]);
     }
-    return res.text();
+    const html = await res.text();
+    const baseUrl = fetchUrl.substring(0, fetchUrl.lastIndexOf("/") + 1);
+    const baseTag = `<base href="${baseUrl}">`;
+    const injected = html.replace(/(<head[^>]*>)/i, `$1\n    ${baseTag}`);
+    return injected === html ? baseTag + html : injected;
   },
 };
