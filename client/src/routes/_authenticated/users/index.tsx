@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useReducer, useState } from "react";
 import { FolderKanban, MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -640,12 +640,18 @@ function UsersContent() {
                   {detailUser.projects?.length ? (
                     <div className="flex flex-col gap-1">
                       {detailUser.projects.map((p) => (
-                        <div key={p.id} className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 transition-colors hover:bg-muted/50">
+                        <Link
+                          key={p.id}
+                          to="/projects/$id/viewer"
+                          params={{ id: String(p.id) }}
+                          className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 transition-colors hover:bg-muted/50"
+                          onClick={() => setDetailUser(null)}
+                        >
                           <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-violet-500/10">
                             <FolderKanban className="size-3.5 text-violet-500" />
                           </div>
                           <span className="truncate text-[13px] font-medium text-foreground">{p.name}</span>
-                        </div>
+                        </Link>
                       ))}
                     </div>
                   ) : (
