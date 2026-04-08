@@ -43,6 +43,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { getProjectColor } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompanies } from "@/api/companies/query";
 import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "@/api/users/query";
@@ -246,7 +247,7 @@ function UsersTable({
           </span>
           <span className="hidden w-36 sm:flex items-center gap-1">
             {u.projects?.slice(0, 3).map((p) => (
-              <Badge key={p.id} variant="secondary" className="text-[11px] truncate max-w-[5rem]">{p.name}</Badge>
+              <Badge key={p.id} variant="secondary" className="text-[11px] truncate max-w-[5rem]" style={{ backgroundColor: getProjectColor(p.id) + "18", color: getProjectColor(p.id) }}>{p.name}</Badge>
             ))}
             {(u.projects?.length ?? 0) > 3 ? (
               <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
@@ -647,8 +648,8 @@ function UsersContent() {
                           className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 transition-colors hover:bg-muted/50"
                           onClick={() => setDetailUser(null)}
                         >
-                          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-violet-500/10">
-                            <FolderKanban className="size-3.5 text-violet-500" />
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: getProjectColor(p.id) + "18" }}>
+                            <FolderKanban className="size-3.5" style={{ color: getProjectColor(p.id) }} />
                           </div>
                           <span className="truncate text-[13px] font-medium text-foreground">{p.name}</span>
                         </Link>
