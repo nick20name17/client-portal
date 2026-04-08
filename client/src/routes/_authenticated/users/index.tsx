@@ -44,13 +44,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
 import { useCompanies } from "@/api/companies/query";
 import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "@/api/users/query";
 import type { Role, User } from "@/types";
@@ -251,12 +244,14 @@ function UsersTable({
           <span className="hidden w-28 truncate text-[13px] text-text-secondary sm:block">
             {companyName(u.companyId)}
           </span>
-          <span className="hidden w-36 sm:flex gap-1 flex-wrap">
-            {u.projects?.slice(0, 2).map((p) => (
-              <Badge key={p.id} variant="secondary" className="text-[11px] truncate max-w-[7rem]">{p.name}</Badge>
+          <span className="hidden w-36 sm:flex items-center gap-1">
+            {u.projects?.slice(0, 3).map((p) => (
+              <Badge key={p.id} variant="secondary" className="text-[11px] truncate max-w-[5rem]">{p.name}</Badge>
             ))}
-            {(u.projects?.length ?? 0) > 2 ? (
-              <Badge variant="outline" className="text-[11px]">+{u.projects!.length - 2}</Badge>
+            {(u.projects?.length ?? 0) > 3 ? (
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                +{u.projects!.length - 3}
+              </span>
             ) : null}
             {!u.projects?.length ? <span className="text-[12px] text-text-tertiary">&mdash;</span> : null}
           </span>
@@ -617,48 +612,51 @@ function UsersContent() {
         onConfirm={() => void confirmDelete()}
       />
 
-      <Sheet open={!!detailUser} onOpenChange={(o) => !o && setDetailUser(null)}>
-        <SheetContent className="sm:max-w-md overflow-y-auto">
+      <Dialog open={!!detailUser} onOpenChange={(o) => !o && setDetailUser(null)}>
+        <DialogContent className="max-w-sm">
           {detailUser ? (
             <>
-              <SheetHeader>
-                <div className="flex items-center gap-3">
-                  <UserAvatar name={detailUser.name} image={detailUser.image} userId={detailUser.id} className="size-10" />
-                  <div className="min-w-0 flex-1">
-                    <SheetTitle className="truncate">{detailUser.name}</SheetTitle>
-                    <SheetDescription className="truncate">{detailUser.email}</SheetDescription>
-                  </div>
-                </div>
-              </SheetHeader>
-              <div className="mt-6 space-y-5 px-1">
-                <div className="flex items-center justify-between">
+              <DialogHeader className="items-center text-center">
+                <UserAvatar name={detailUser.name} image={detailUser.image} userId={detailUser.id} className="size-14 text-lg" />
+                <DialogTitle className="mt-2">{detailUser.name}</DialogTitle>
+                <DialogDescription>{detailUser.email}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3.5 py-2.5">
                   <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Role</span>
                   <RoleBadge role={detailUser.role} />
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3.5 py-2.5">
                   <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Company</span>
-                  <span className="text-[13px] text-foreground">{companyName(detailUser.companyId)}</span>
+                  <span className="text-[13px] font-medium text-foreground">{companyName(detailUser.companyId)}</span>
                 </div>
                 <div>
-                  <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Projects</span>
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <FolderKanban className="size-3.5 text-text-tertiary" />
+                    <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">
+                      Projects ({detailUser.projects?.length ?? 0})
+                    </span>
+                  </div>
                   {detailUser.projects?.length ? (
-                    <div className="mt-2 flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1">
                       {detailUser.projects.map((p) => (
-                        <div key={p.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
-                          <FolderKanban className="size-3.5 shrink-0 text-text-tertiary" />
+                        <div key={p.id} className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 transition-colors hover:bg-muted/50">
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-violet-500/10">
+                            <FolderKanban className="size-3.5 text-violet-500" />
+                          </div>
                           <span className="truncate text-[13px] font-medium text-foreground">{p.name}</span>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-2 text-[13px] text-text-secondary">No projects</p>
+                    <p className="text-[13px] text-text-secondary text-center py-3">No projects yet</p>
                   )}
                 </div>
               </div>
             </>
           ) : null}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
