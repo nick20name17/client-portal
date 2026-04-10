@@ -1167,7 +1167,9 @@ function useProjectViewerData(projectId: string) {
     if (!files?.length) return;
     void setFileId((prev) => {
       if (prev && files.some((f) => String(f.id) === prev)) return prev;
-      return files[0] ? String(files[0].id) : null;
+      // Prefer home.html as the entry page
+      const home = files.find((f) => /home\.html?$/i.test(f.path));
+      return String((home ?? files[0])!.id);
     });
   }, [files, setFileId]);
 
