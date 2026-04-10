@@ -406,6 +406,13 @@ interface PageGroup {
   comments: Comment[];
 }
 
+function formatViewId(viewId: string): string {
+  return viewId
+    .replace(/^view-/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function groupCommentsByPage(
   comments: Comment[],
   files: { id: number; path: string }[] | undefined,
@@ -424,7 +431,28 @@ function groupCommentsByPage(
   for (const f of files) {
     const fileComments = byFile.get(f.id);
     if (!fileComments?.length) continue;
-    groups.push({ key: String(f.id), label: formatFileName(f.path), isCurrent: String(f.id) === currentFileId, comments: fileComments });
+    const isCurrent = String(f.id) === currentFileId;
+
+    // SPA sub-grouping: if comments have viewId, group by view within the file
+    const byView = new Map<string, Comment[]>();
+    let hasViews = false;
+    for (const c of fileComments) {
+      const vid = (c.anchor as Anchor)?.viewId ?? "";
+      if (vid) hasViews = true;
+      const key = vid || "__no_view__";
+      const list = byView.get(key) ?? [];
+      list.push(c);
+      byView.set(key, list);
+    }
+
+    if (hasViews && byView.size > 1) {
+      for (const [vid, comms] of byView) {
+        const label = vid === "__no_view__" ? formatFileName(f.path) : formatViewId(vid);
+        groups.push({ key: `${f.id}-${vid}`, label, isCurrent, comments: comms });
+      }
+    } else {
+      groups.push({ key: String(f.id), label: formatFileName(f.path), isCurrent, comments: fileComments });
+    }
   }
   return groups.length > 1 ? groups : null;
 }

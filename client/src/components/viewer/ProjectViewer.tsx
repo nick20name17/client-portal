@@ -59,6 +59,7 @@ const emptyAnchor = (): Anchor => ({
   textContent: null,
   tagName: "DIV",
   xpath: "",
+  viewId: null,
 });
 
 function flattenCommentAnchorsForResolution(comments: Comment[] | undefined): { id: string; anchor: Anchor }[] {
@@ -781,7 +782,13 @@ function useViewerIframe({
     else win.postMessage({ type: "CLEAR_HIGHLIGHT" }, "*");
   }, [iframeRef]);
 
-  return { pins, ghostPin, sendHighlight, handleFrameReady, requestAnchorPositions };
+  const sendNavigateToView = useCallback((viewId: string) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "NAVIGATE_TO_VIEW", viewId }, "*");
+  }, [iframeRef]);
+
+  return { pins, ghostPin, sendHighlight, sendNavigateToView, handleFrameReady, requestAnchorPositions };
 }
 
 /* ──────────────────────────── Sub-components ──────────────────────────── */
@@ -1393,12 +1400,18 @@ function useProjectViewerData(projectId: string) {
     if (isMobile) dispatch({ type: "SET_MOBILE_SHEET", open: true });
     else dispatch({ type: "SET_COMMENTS_OPEN", open: true });
 
+    const commentViewId = (c.anchor as Anchor)?.viewId;
+
     if (!isCurrentFile) {
       // Different file — switch file, defer highlight
       pendingCrossPageHighlightRef.current = { commentId, anchor: c.anchor as Anchor };
       void setFileId(commentFileId);
+    } else if (commentViewId) {
+      // Same file, SPA view — navigate to view then highlight
+      iframe.sendNavigateToView(commentViewId);
+      setTimeout(() => iframe.sendHighlight(c.anchor as Anchor), 500);
     } else {
-      // Same file — highlight directly
+      // Same file, no view — highlight directly
       iframe.sendHighlight(c.anchor as Anchor);
     }
   }

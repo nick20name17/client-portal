@@ -113,6 +113,14 @@ const BRIDGE_SCRIPT = `
     }
     return null;
   }
+  function findViewId(el){
+    var cur = el;
+    while (cur && cur !== document.body) {
+      if (cur.classList && cur.classList.contains("view") && cur.id) return cur.id;
+      cur = cur.parentElement;
+    }
+    return null;
+  }
   function applyCommentAnchors(){
     if (interactionMode !== "commenting") return;
   }
@@ -153,7 +161,8 @@ const BRIDGE_SCRIPT = `
         selector: simpleSelector(el),
         textContent: el.textContent ? el.textContent.trim().slice(0, 100) : null,
         tagName: el.tagName,
-        xpath: getXPath(el)
+        xpath: getXPath(el),
+        viewId: findViewId(el)
       }
     }, "*");
   }, true);
@@ -285,6 +294,17 @@ const BRIDGE_SCRIPT = `
       document.body.style.cursor = e.data.cursor || "";
       return;
     }
+    if (e.data.type === "NAVIGATE_TO_VIEW") {
+      var viewId = e.data.viewId;
+      if (viewId && typeof viewId === "string") {
+        // Extract page name from view id (e.g. "view-catalog" → "catalog")
+        var page = viewId.replace(/^view-/, "");
+        if (typeof window.navigate === "function") {
+          window.navigate(page);
+        }
+      }
+      return;
+    }
     if (e.data.type === "PICK_ELEMENT_AT") {
       if (dropHighlight) {
         dropHighlight.style.outline = "";
@@ -307,7 +327,8 @@ const BRIDGE_SCRIPT = `
           selector: simpleSelector(picked),
           textContent: picked.textContent ? picked.textContent.trim().slice(0, 100) : null,
           tagName: picked.tagName,
-          xpath: getXPath(picked)
+          xpath: getXPath(picked),
+          viewId: findViewId(picked)
         }
       }, "*");
       return;

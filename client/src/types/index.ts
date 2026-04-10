@@ -51,6 +51,7 @@ export interface Anchor {
   textContent: string | null;
   tagName: string;
   xpath: string;
+  viewId?: string | null;
 }
 
 export interface Tag {
