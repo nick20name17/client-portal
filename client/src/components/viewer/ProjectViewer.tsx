@@ -43,6 +43,7 @@ import {
   usePatchComment,
   useAddCommentTag,
   useComments,
+  useAllProjectComments,
 } from "@/api/comments/query";
 import { useFileVersions, useCheckNewVersions, FILE_VERSION_KEYS } from "@/api/file-versions/query";
 import { useProjectFiles, useProject, useProjectMembers, useSyncProjectFiles } from "@/api/projects/query";
@@ -1128,6 +1129,7 @@ function useProjectViewerData(projectId: string) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isSpaNavigatingRef = useRef(false);
   const spaNavTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingCrossPageHighlightRef = useRef<{ commentId: number; anchor: Anchor } | null>(null);
   useProjectWS(projectId);
 
   // Auto-check for new file versions every 5 min
@@ -1189,6 +1191,11 @@ function useProjectViewerData(projectId: string) {
     if (fileId !== prevFileIdRef.current) {
       prevFileIdRef.current = fileId;
       dispatch({ type: "FILE_SWITCH_RESET" });
+      // Re-set activeThreadId if navigating to a comment on this file
+      const pending = pendingCrossPageHighlightRef.current;
+      if (pending) {
+        dispatch({ type: "SET_ACTIVE_THREAD", id: pending.commentId });
+      }
     }
   }, [fileId, dispatch]);
 
@@ -1201,9 +1208,9 @@ function useProjectViewerData(projectId: string) {
   }, [fileVersionsList]);
 
   const { data: comments, isPending: commentsLoading } = useComments(projectId, fileId ?? undefined, selectedVersionId);
+  const { data: allComments, isPending: allCommentsLoading } = useAllProjectComments(projectId);
 
-  const topLevelComments = useMemo(() => {
-    const rows = comments ?? [];
+  function nestComments(rows: Comment[]) {
     const top = rows.filter((c) => !c.parentId);
     const byParent = new Map<number, Comment[]>();
     for (const c of rows) {
@@ -1218,7 +1225,10 @@ function useProjectViewerData(projectId: string) {
       const merged = [...nested, ...flat.filter((r) => !nested.some((n) => n.id === r.id))];
       return { ...c, replies: merged };
     });
-  }, [comments]);
+  }
+
+  const topLevelComments = useMemo(() => nestComments(comments ?? []), [comments]);
+  const allTopLevelComments = useMemo(() => nestComments(allComments ?? []), [allComments]);
 
   const commentAnchors = useMemo(() => {
     const anchors: Anchor[] = [];
@@ -1364,12 +1374,41 @@ function useProjectViewerData(projectId: string) {
   function onSelectThread(commentId: number) {
     dispatch({ type: "SET_GHOST", ghost: null });
     pendingGhostAnchorRef.current = null;
-    dispatch({ type: "SET_ACTIVE_THREAD", id: activeThreadId === commentId ? null : commentId });
-    const c = topLevelComments.find((x) => x.id === commentId);
-    if (c) iframe.sendHighlight(c.anchor as Anchor);
+
+    // Toggle off if already active
+    if (activeThreadId === commentId) {
+      dispatch({ type: "SET_ACTIVE_THREAD", id: null });
+      return;
+    }
+
+    const c = allTopLevelComments.find((x) => x.id === commentId) ?? topLevelComments.find((x) => x.id === commentId);
+    if (!c) return;
+
+    const commentFileId = String(c.fileId);
+    const isCurrentFile = commentFileId === fileId;
+
+    dispatch({ type: "SET_ACTIVE_THREAD", id: commentId });
     if (isMobile) dispatch({ type: "SET_MOBILE_SHEET", open: true });
     else dispatch({ type: "SET_COMMENTS_OPEN", open: true });
+
+    if (!isCurrentFile) {
+      // Different file — switch file, defer highlight
+      pendingCrossPageHighlightRef.current = { commentId, anchor: c.anchor as Anchor };
+      void setFileId(commentFileId);
+    } else {
+      // Same file — highlight directly
+      iframe.sendHighlight(c.anchor as Anchor);
+    }
   }
+
+  // Wrap handleFrameReady to consume pending cross-page highlight after file switch
+  const wrappedHandleFrameReady = useCallback(() => {
+    iframe.handleFrameReady();
+    const pending = pendingCrossPageHighlightRef.current;
+    if (!pending) return;
+    pendingCrossPageHighlightRef.current = null;
+    setTimeout(() => iframe.sendHighlight(pending.anchor), 300);
+  }, [iframe.handleFrameReady, iframe.sendHighlight]);
 
   function toggleTag(id: number) {
     setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1408,8 +1447,8 @@ function useProjectViewerData(projectId: string) {
     dispatch, vs,
     html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
     anchorResolvedMap, isFullscreen, canManageVersions,
-    topLevelComments, comments, commentsLoading, commentAnchors, anchorResolutionItems,
-    handleAnchorResolution, iframe, commentHandlers, dnd,
+    topLevelComments, allTopLevelComments, comments, commentsLoading, allCommentsLoading, commentAnchors, anchorResolutionItems,
+    handleAnchorResolution, iframe, wrappedHandleFrameReady, commentHandlers, dnd,
     pendingGhostAnchorRef, pendingContextMenuFractionRef, contextMenuTriggerRef,
     selectedTagIds, onSelectThread, toggleTag,
     showThreadPopover, showComposePopover, popoverDisplay,
@@ -1573,8 +1612,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     dispatch,
     html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
     anchorResolvedMap, isFullscreen, canManageVersions,
-    topLevelComments, comments, commentsLoading, commentAnchors, anchorResolutionItems,
-    handleAnchorResolution, iframe, commentHandlers, dnd,
+    topLevelComments, allTopLevelComments, comments, commentsLoading, allCommentsLoading, commentAnchors, anchorResolutionItems,
+    handleAnchorResolution, iframe, wrappedHandleFrameReady, commentHandlers, dnd,
     pendingGhostAnchorRef, pendingContextMenuFractionRef, contextMenuTriggerRef,
     selectedTagIds, onSelectThread, toggleTag,
     showThreadPopover, showComposePopover, popoverDisplay,
@@ -1588,10 +1627,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }
 
   const sidebarProps = {
-    comments: topLevelComments,
+    comments: allTopLevelComments,
     currentUser: user,
     members: mentionMembers,
-    loading: commentsLoading,
+    loading: allCommentsLoading,
     tagOptions,
     onAddComment: () => {},
     onSubmitDirectComment: commentHandlers.onSubmitDirectComment,
@@ -1606,6 +1645,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     onUnlink: commentHandlers.onUnlink,
     onEditComment: commentHandlers.onEditComment,
     onDeleteComment: commentHandlers.onDelete,
+    files,
+    currentFileId: fileId,
   };
 
   return (
@@ -1680,7 +1721,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     anchorResolutionItems={anchorResolutionItems}
                     onAnchorResolution={handleAnchorResolution}
                     borderless={isFullscreen}
-                    onFrameReady={iframe.handleFrameReady}
+                    onFrameReady={wrappedHandleFrameReady}
                     onFileNav={(href) => {
                       const name = href.split("/").pop() ?? href;
                       const target = files?.find((f) => (f.path.split("/").pop() ?? f.path) === name);

@@ -1,7 +1,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Check, CheckCircle, ChevronDown, GripVertical, Link2Off, MessageSquarePlus, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Check, CheckCircle, ChevronDown, FileText, GripVertical, Link2Off, MessageSquarePlus, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { TagBadge } from "@/components/comments/TagBadge";
@@ -391,6 +391,44 @@ function ThreadListSkeleton() {
   );
 }
 
+function formatFileName(path: string) {
+  const name = path.split("/").pop() ?? path;
+  return name
+    .replace(/\.html?$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+interface PageGroup {
+  key: string;
+  label: string;
+  isCurrent: boolean;
+  comments: Comment[];
+}
+
+function groupCommentsByPage(
+  comments: Comment[],
+  files: { id: number; path: string }[] | undefined,
+  currentFileId: string | null | undefined,
+): PageGroup[] | null {
+  if (!files?.length) return null;
+
+  const byFile = new Map<number, Comment[]>();
+  for (const c of comments) {
+    const list = byFile.get(c.fileId) ?? [];
+    list.push(c);
+    byFile.set(c.fileId, list);
+  }
+
+  const groups: PageGroup[] = [];
+  for (const f of files) {
+    const fileComments = byFile.get(f.id);
+    if (!fileComments?.length) continue;
+    groups.push({ key: String(f.id), label: formatFileName(f.path), isCurrent: String(f.id) === currentFileId, comments: fileComments });
+  }
+  return groups.length > 1 ? groups : null;
+}
+
 export function CommentsSidebar({
   comments,
   currentUser,
@@ -411,6 +449,8 @@ export function CommentsSidebar({
   onUnlink,
   onEditComment,
   onDeleteComment,
+  files,
+  currentFileId,
 }: {
   comments: Comment[] | undefined;
   currentUser?: User | null;
@@ -431,6 +471,8 @@ export function CommentsSidebar({
   onUnlink?: (id: number) => void;
   onEditComment?: (id: number, newBody: string) => void | Promise<void>;
   onDeleteComment?: (id: number) => void | Promise<void>;
+  files?: { id: number; path: string }[];
+  currentFileId?: string | null;
 }) {
   const [filter, setFilter] = useState<"all" | "open" | "resolved">("open");
   const [searchQuery, setSearchQuery] = useState("");
@@ -593,22 +635,46 @@ export function CommentsSidebar({
             </div>
           </div>
         ) : (() => {
-          const unlinked = filteredBySearch.filter(
-            (c) => !c.anchor?.selector && !c.anchor?.dataComment,
-          );
-          const orphaned = filteredBySearch.filter(
-            (c) => Boolean(c.anchor?.selector || c.anchor?.dataComment) && anchorResolvedMap?.[String(c.id)] === false,
-          );
-          const normal = filteredBySearch.filter(
-            (c) => !unlinked.includes(c) && !orphaned.includes(c),
-          );
-          let idx = 0;
-          const unlinkedNodes = renderThreadList(unlinked, idx, { isOrphaned: false, isUnlinked: true });
-          idx += unlinked.length;
-          const orphanedNodes = renderThreadList(orphaned, idx, { isOrphaned: true });
-          idx += orphaned.length;
-          const normalNodes = renderThreadList(normal, idx, { isOrphaned: false });
-          return <>{unlinkedNodes}{orphanedNodes}{normalNodes}</>;
+          function classifyAndRender(list: Comment[]) {
+            const unlinked = list.filter(
+              (c) => !c.anchor?.selector && !c.anchor?.dataComment,
+            );
+            const orphaned = list.filter(
+              (c) => Boolean(c.anchor?.selector || c.anchor?.dataComment) && anchorResolvedMap?.[String(c.id)] === false,
+            );
+            const normal = list.filter(
+              (c) => !unlinked.includes(c) && !orphaned.includes(c),
+            );
+            let idx = 0;
+            const unlinkedNodes = renderThreadList(unlinked, idx, { isOrphaned: false, isUnlinked: true });
+            idx += unlinked.length;
+            const orphanedNodes = renderThreadList(orphaned, idx, { isOrphaned: true });
+            idx += orphaned.length;
+            const normalNodes = renderThreadList(normal, idx, { isOrphaned: false });
+            return <>{unlinkedNodes}{orphanedNodes}{normalNodes}</>;
+          }
+
+          const pageGroups = groupCommentsByPage(filteredBySearch, files, currentFileId);
+
+          if (!pageGroups) {
+            return classifyAndRender(filteredBySearch);
+          }
+
+          return pageGroups.map((group) => (
+            <div key={group.key} className="space-y-1.5">
+              <div className="sticky top-0 z-10 flex items-center gap-1.5 bg-bg-secondary px-1 pt-2 pb-1">
+                <FileText className="size-3 shrink-0 text-muted-foreground/60" />
+                <span className={cn(
+                  "truncate text-[11px] font-semibold",
+                  group.isCurrent ? "text-primary" : "text-muted-foreground",
+                )}>
+                  {group.label}
+                </span>
+                <span className="text-[10px] text-muted-foreground/50">({group.comments.length})</span>
+              </div>
+              {classifyAndRender(group.comments)}
+            </div>
+          ));
         })()}
       </div>
 

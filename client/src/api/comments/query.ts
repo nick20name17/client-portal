@@ -17,6 +17,14 @@ const commentsQuery = (projectId: string, params: CommentsParams = {}) =>
     enabled: !!projectId && !!params.fileId,
   });
 
+export function useAllProjectComments(projectId: string | undefined) {
+  return useQuery({
+    queryKey: COMMENT_KEYS.list(projectId ?? "", {}),
+    queryFn: () => commentsService.getAll(projectId ?? "", {}),
+    enabled: !!projectId,
+  });
+}
+
 export function useComments(
   projectId: string | undefined,
   fileId: string | undefined,
