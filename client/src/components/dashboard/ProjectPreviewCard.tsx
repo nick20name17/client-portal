@@ -23,7 +23,7 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
   const filesCount = project._count?.files ?? 0;
 
   const { data: files } = useProjectFiles(String(project.id));
-  const firstFile = files?.[0];
+  const firstFile = files?.find((f) => /home\.html?$/i.test(f.path)) ?? files?.[0];
   const { data: html } = useFirstFileHtml(project.id, firstFile?.id);
 
   const previewRef = useRef<HTMLDivElement>(null);
