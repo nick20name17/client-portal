@@ -908,7 +908,11 @@ function ViewerHeaderBar({
       </div>
 
       <div className="flex items-center gap-1 overflow-x-auto border-t border-border/40 px-3 py-2 scrollbar-none">
-        {(files ?? []).map((f) => {
+        {[...(files ?? [])].sort((a, b) => {
+          const aHome = /home\.html?$/i.test(a.path) ? 0 : 1;
+          const bHome = /home\.html?$/i.test(b.path) ? 0 : 1;
+          return aHome - bHome;
+        }).map((f) => {
           const active = String(f.id) === fileId;
           return (
             <button
