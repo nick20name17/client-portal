@@ -133,7 +133,7 @@ const BRIDGE_SCRIPT = `
       e.preventDefault();
       e.stopPropagation();
       var href = t.getAttribute("href") || "";
-      if (href && !href.startsWith("http") && !href.startsWith("//") && !href.startsWith("#") && /\.html?(\?|#|$)/i.test(href)) {
+      if (href && !href.startsWith("http") && !href.startsWith("//") && !href.startsWith("#") && /\\.html?(\\?|#|$)/i.test(href)) {
         window.parent.postMessage({ type: "FILE_NAV", href: href }, "*");
       }
     }
