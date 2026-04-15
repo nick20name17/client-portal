@@ -1110,6 +1110,11 @@ function useProjectViewerData(projectId: string) {
 
   const [fileId, setFileId] = useQueryState("file");
   const [commentParam, setCommentParam] = useQueryState("comment", parseAsInteger);
+  const [navSearch, setNavSearch] = useState("");
+  const navSearchTargetRef = useRef<string>("");
+  useEffect(() => {
+    if (fileId !== navSearchTargetRef.current && navSearch !== "") setNavSearch("");
+  }, [fileId, navSearch]);
   const [vs, dispatch] = useReducer(viewerReducer, viewerInitial);
   const { html, htmlLoading, htmlError, pinPositions, anchorResolvedMap, activeThreadId, ghostRaw, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector } = vs;
 
@@ -1463,6 +1468,7 @@ function useProjectViewerData(projectId: string) {
     user, project, files, filesLoading,
     mentionMembers, tagOptions, fileVersionsList,
     fileId, setFileId,
+    navSearch, setNavSearch, navSearchTargetRef,
     dispatch, vs,
     html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
     anchorResolvedMap, isFullscreen, canManageVersions,
@@ -1628,6 +1634,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     user, project, files, filesLoading,
     mentionMembers, tagOptions, fileVersionsList,
     fileId, setFileId,
+    navSearch, setNavSearch, navSearchTargetRef,
     dispatch,
     html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
     anchorResolvedMap, isFullscreen, canManageVersions,
@@ -1741,10 +1748,20 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     onAnchorResolution={handleAnchorResolution}
                     borderless={isFullscreen}
                     onFrameReady={wrappedHandleFrameReady}
+                    navSearch={navSearch}
                     onFileNav={(href) => {
-                      const name = href.split("/").pop() ?? href;
+                      const qIdx = href.search(/[?#]/);
+                      const pathPart = qIdx === -1 ? href : href.slice(0, qIdx);
+                      const searchHashPart = qIdx === -1 ? "" : href.slice(qIdx);
+                      const name = pathPart.split("/").pop() ?? pathPart;
                       const target = files?.find((f) => (f.path.split("/").pop() ?? f.path) === name);
-                      if (target) void setFileId(String(target.id));
+                      if (target) {
+                        navSearchTargetRef.current = String(target.id);
+                        setNavSearch(searchHashPart);
+                        void setFileId(String(target.id));
+                      } else {
+                        setNavSearch("");
+                      }
                     }}
                   />
 

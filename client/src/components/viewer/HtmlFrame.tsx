@@ -133,7 +133,7 @@ const BRIDGE_SCRIPT = `
       e.preventDefault();
       e.stopPropagation();
       var href = t.getAttribute("href") || "";
-      if (href && !href.startsWith("http") && !href.startsWith("//") && !href.startsWith("#") && /\.html?$/i.test(href)) {
+      if (href && !href.startsWith("http") && !href.startsWith("//") && !href.startsWith("#") && /\.html?(\?|#|$)/i.test(href)) {
         window.parent.postMessage({ type: "FILE_NAV", href: href }, "*");
       }
     }
@@ -337,13 +337,30 @@ const BRIDGE_SCRIPT = `
 })();
 `;
 
-function injectBridge(html: string): string {
+function injectBridge(html: string, navSearch: string): string {
   if (!html) return "";
   const script = "<script>" + BRIDGE_SCRIPT + "</script>";
-  if (html.includes("</body>")) {
-    return html.replace("</body>", script + "</body>");
+  // srcdoc iframes can't set location.search via history API, so we intercept
+  // URLSearchParams to return the primed search when user code reads the empty
+  // location.search. This is how pages like product.html?product=X get their id.
+  const prime = navSearch
+    ? `<script>(function(){var s=${JSON.stringify(navSearch)};var O=window.URLSearchParams;window.URLSearchParams=new Proxy(O,{construct:function(t,a){if(a.length>0&&a[0]===""&&window.location.search===""){a=[s];}return Reflect.construct(t,a);}});})();</script>`
+    : "";
+
+  let result = html;
+  if (prime) {
+    if (result.includes("</head>")) {
+      result = result.replace("</head>", prime + "</head>");
+    } else if (/<body[^>]*>/i.test(result)) {
+      result = result.replace(/(<body[^>]*>)/i, "$1" + prime);
+    } else {
+      result = prime + result;
+    }
   }
-  return html + script;
+  if (result.includes("</body>")) {
+    return result.replace("</body>", script + "</body>");
+  }
+  return result + script;
 }
 
 export const HtmlFrame = forwardRef<
@@ -358,6 +375,7 @@ export const HtmlFrame = forwardRef<
     onAnchorResolution?: (resolved: Record<string, boolean>) => void;
     onFrameReady?: () => void;
     onFileNav?: (href: string) => void;
+    navSearch?: string;
     borderless?: boolean;
   }
 >(
@@ -372,6 +390,7 @@ export const HtmlFrame = forwardRef<
       onAnchorResolution,
       onFrameReady,
       onFileNav,
+      navSearch = "",
       borderless,
     },
     ref,
@@ -379,7 +398,7 @@ export const HtmlFrame = forwardRef<
   const localRef = useRef<HTMLIFrameElement | null>(null);
   const [loadedSrcDoc, setLoadedSrcDoc] = useState("");
   useImperativeHandle(ref, () => localRef.current as HTMLIFrameElement);
-  const srcDoc = useMemo(() => (html ? injectBridge(html) : ""), [html]);
+  const srcDoc = useMemo(() => (html ? injectBridge(html, navSearch) : ""), [html, navSearch]);
   const frameReady = loadedSrcDoc !== "" && loadedSrcDoc === srcDoc;
 
   useEffect(() => {
