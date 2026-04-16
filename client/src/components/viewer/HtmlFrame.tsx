@@ -125,17 +125,16 @@ const BRIDGE_SCRIPT = `
     if (interactionMode !== "commenting") return;
   }
 
-  // Block anchor navigation; relay .html page links to parent as FILE_NAV.
+  // Relay .html page links to parent as FILE_NAV; leave SPA hash/internal links alone.
   document.addEventListener("click", function(e){
     var t = e.target;
     while (t && t.tagName !== "A") t = t.parentElement;
-    if (t && t.tagName === "A") {
+    if (!t || t.tagName !== "A") return;
+    var href = t.getAttribute("href") || "";
+    if (href && !href.startsWith("http") && !href.startsWith("//") && !href.startsWith("#") && /\\.html?(\\?|#|$)/i.test(href)) {
       e.preventDefault();
       e.stopPropagation();
-      var href = t.getAttribute("href") || "";
-      if (href && !href.startsWith("http") && !href.startsWith("//") && !href.startsWith("#") && /\\.html?(\\?|#|$)/i.test(href)) {
-        window.parent.postMessage({ type: "FILE_NAV", href: href }, "*");
-      }
+      window.parent.postMessage({ type: "FILE_NAV", href: href }, "*");
     }
   }, true);
 
