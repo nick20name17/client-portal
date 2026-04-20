@@ -18,7 +18,7 @@ function useFirstFileHtml(projectId: number, fileId: number | undefined) {
 }
 
 function injectHideScript(html: string): string {
-  const hideScript = `<script>(function(){var s=document.createElement("style");s.textContent="*{animation:none!important;transition:none!important}";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};requestAnimationFrame(function(){hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})})()</script>`;
+  const hideScript = `<script>(function(){var s=document.createElement("style");s.textContent="*{animation:none!important;transition:none!important}";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};function doHide(){hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})};var readyTimeout=setTimeout(function(){doHide()},3000);window.addEventListener("message",function(e){if(e.data&&e.data.type==="PREVIEW_SETTLE_QUERY"){clearTimeout(readyTimeout);doHide();window.parent.postMessage({type:"PREVIEW_SETTLED"},"*")}});})()</script>`;
 
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, hideScript + "</body>");
@@ -39,7 +39,9 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
   const { data: html } = useFirstFileHtml(project.id, firstFile?.id);
 
   const previewRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [scale, setScale] = useState(0.25);
+  const [previewReady, setPreviewReady] = useState(false);
 
   useEffect(() => {
     const el = previewRef.current;
@@ -50,6 +52,24 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.data?.type === "PREVIEW_SETTLED") {
+        setPreviewReady(true);
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  function handleIframeLoad() {
+    setPreviewReady(false);
+    const win = iframeRef.current?.contentWindow;
+    if (win) {
+      win.postMessage({ type: "PREVIEW_SETTLE_QUERY" }, "*");
+    }
+  }
 
   const iframeH = Math.round(160 / scale);
 
@@ -68,20 +88,31 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
         className="relative h-40 overflow-hidden rounded-t-xl border-b border-border/50 bg-muted/20 isolate"
       >
         {previewHtml ? (
-          <iframe
-            title="Project preview"
-            srcDoc={previewHtml}
-            sandbox="allow-scripts"
-            tabIndex={-1}
-            aria-hidden="true"
-            className="pointer-events-none absolute left-0 top-0 border-0 bg-white"
-            style={{
-              width: 1280,
-              height: iframeH,
-              transform: `scale(${scale})`,
-              transformOrigin: "top left",
-            }}
-          />
+          <>
+            <iframe
+              ref={iframeRef}
+              title="Project preview"
+              srcDoc={previewHtml}
+              sandbox="allow-scripts"
+              tabIndex={-1}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-0 top-0 border-0 bg-white"
+              style={{
+                width: 1280,
+                height: iframeH,
+                transform: `scale(${scale})`,
+                transformOrigin: "top left",
+                opacity: previewReady ? 1 : 0,
+                transition: "opacity 0.2s",
+              }}
+              onLoad={handleIframeLoad}
+            />
+            {!previewReady && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="size-5 animate-spin rounded-full border-2 border-border border-t-muted-foreground/30" />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="size-5 animate-spin rounded-full border-2 border-border border-t-muted-foreground/30" />
