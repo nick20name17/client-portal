@@ -18,29 +18,21 @@ function useFirstFileHtml(projectId: number, fileId: number | undefined) {
 }
 
 function injectHideScript(html: string): string {
-  const disableAnimationsStyle = `<style>*{animation:none!important;transition:none!important}</style>`;
-  const hideScript = `<script>(function(){function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};setTimeout(function(){hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})},4000)})()</script>`;
+  const hideScript = `<script>(function(){var s=document.createElement("style");s.textContent="";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})()</script>`;
 
-  let result = html;
-
-  // Inject CSS into head first (before any animations can start)
-  if (/<\/head>/i.test(result)) {
-    result = result.replace(/<\/head>/i, disableAnimationsStyle + "</head>");
-  } else if (/<head[^>]*>/i.test(result)) {
-    result = result.replace(/(<head[^>]*>)/i, "$1" + disableAnimationsStyle);
-  } else {
-    result = disableAnimationsStyle + result;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, hideScript + "</body>");
   }
-
-  // Inject hide script at body
-  if (/<\/body>/i.test(result)) {
-    return result.replace(/<\/body>/i, hideScript + "</body>");
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, hideScript + "</head>");
   }
-  if (/<\/head>/i.test(result)) {
-    return result.replace(/<\/head>/i, hideScript + "</head>");
-  }
-  return result + hideScript;
+  return html + hideScript;
 }
+
+// Pages can signal when they're ready to be previewed by posting:
+//   window.parent.postMessage({ type: "PREVIEW_READY" }, "*")
+// This is useful if the page has entrance animations or async content.
+// Until PREVIEW_READY is received, a loading spinner is shown.
 
 export function ProjectPreviewCard({ project }: { project: Project }) {
   const accent = getProjectColor(project.id);
@@ -53,6 +45,7 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
 
   const previewRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.25);
+  const [previewReady, setPreviewReady] = useState(false);
 
   useEffect(() => {
     const el = previewRef.current;
@@ -63,6 +56,20 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type === "PREVIEW_READY") {
+        setPreviewReady(true);
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  useEffect(() => {
+    setPreviewReady(false);
+  }, [html]);
 
   const iframeH = Math.round(160 / scale);
 
@@ -81,20 +88,28 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
         className="relative h-40 overflow-hidden rounded-t-xl border-b border-border/50 bg-muted/20 isolate"
       >
         {previewHtml ? (
-          <iframe
-            title="Project preview"
-            srcDoc={previewHtml}
-            sandbox="allow-scripts"
-            tabIndex={-1}
-            aria-hidden="true"
-            className="pointer-events-none absolute left-0 top-0 border-0 bg-white"
-            style={{
-              width: 1280,
-              height: iframeH,
-              transform: `scale(${scale})`,
-              transformOrigin: "top left",
-            }}
-          />
+          <>
+            <iframe
+              title="Project preview"
+              srcDoc={previewHtml}
+              sandbox="allow-scripts"
+              tabIndex={-1}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-0 top-0 border-0 bg-white transition-opacity duration-300"
+              style={{
+                width: 1280,
+                height: iframeH,
+                transform: `scale(${scale})`,
+                transformOrigin: "top left",
+                opacity: previewReady ? 1 : 0,
+              }}
+            />
+            {!previewReady && (
+              <div className="flex h-full items-center justify-center">
+                <div className="size-5 animate-spin rounded-full border-2 border-border border-t-muted-foreground/30" />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="size-5 animate-spin rounded-full border-2 border-border border-t-muted-foreground/30" />
