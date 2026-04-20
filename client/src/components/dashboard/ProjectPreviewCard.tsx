@@ -18,15 +18,28 @@ function useFirstFileHtml(projectId: number, fileId: number | undefined) {
 }
 
 function injectHideScript(html: string): string {
-  const hideScript = `<script>(function(){var s=document.createElement("style");s.textContent="*{animation:none!important;transition:none!important}";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})()</script>`;
+  const disableAnimationsStyle = `<style>*{animation:none!important;transition:none!important}</style>`;
+  const hideScript = `<script>(function(){function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})()</script>`;
 
-  if (/<\/body>/i.test(html)) {
-    return html.replace(/<\/body>/i, hideScript + "</body>");
+  let result = html;
+
+  // Inject CSS into head first (before any animations can start)
+  if (/<\/head>/i.test(result)) {
+    result = result.replace(/<\/head>/i, disableAnimationsStyle + "</head>");
+  } else if (/<head[^>]*>/i.test(result)) {
+    result = result.replace(/(<head[^>]*>)/i, "$1" + disableAnimationsStyle);
+  } else {
+    result = disableAnimationsStyle + result;
   }
-  if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, hideScript + "</head>");
+
+  // Inject hide script at body
+  if (/<\/body>/i.test(result)) {
+    return result.replace(/<\/body>/i, hideScript + "</body>");
   }
-  return html + hideScript;
+  if (/<\/head>/i.test(result)) {
+    return result.replace(/<\/head>/i, hideScript + "</head>");
+  }
+  return result + hideScript;
 }
 
 export function ProjectPreviewCard({ project }: { project: Project }) {
