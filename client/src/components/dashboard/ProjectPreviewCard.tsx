@@ -18,7 +18,7 @@ function useFirstFileHtml(projectId: number, fileId: number | undefined) {
 }
 
 function injectHideScript(html: string): string {
-  const hideScript = `<script>(function(){var s=document.createElement("style");s.textContent="";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})()</script>`;
+  const hideScript = `<script>(function(){var s=document.createElement("style");s.textContent="*{animation:none!important;transition:none!important}";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})()</script>`;
 
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, hideScript + "</body>");
