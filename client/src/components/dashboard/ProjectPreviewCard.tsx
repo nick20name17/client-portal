@@ -19,7 +19,7 @@ function useFirstFileHtml(projectId: number, fileId: number | undefined) {
 
 function injectHideScript(html: string): string {
   const disableAnimationsStyle = `<style>*{animation:none!important;transition:none!important}</style>`;
-  const hideScript = `<script>(function(){function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};setTimeout(function(){hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})},2000)})()</script>`;
+  const hideScript = `<script>(function(){function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};setTimeout(function(){hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})},4000)})()</script>`;
 
   let result = html;
 
