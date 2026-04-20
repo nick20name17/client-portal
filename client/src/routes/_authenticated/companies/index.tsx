@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { format } from "date-fns";
 import { Building2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,6 +44,7 @@ import {
 import type { Company } from "@/types";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui-store";
 
 export const Route = createFileRoute("/_authenticated/companies/")({
   component: CompaniesPage,
@@ -101,15 +103,25 @@ function CompaniesContent() {
   const remove = useDeleteCompany();
 
   const [q, setQ] = useState("");
+  const [debouncedQ] = useDebounce(q, 300);
   const [state, dispatch] = useReducer(companyDialogReducer, initialCompanyDialog);
   const { dialogOpen, editing, name, deleteTarget } = state;
 
+  const pendingAction = useUIStore((s) => s.pendingAction);
+  const consumePendingAction = useUIStore((s) => s.consumePendingAction);
+  useEffect(() => {
+    if (pendingAction?.type === "create-company") {
+      consumePendingAction();
+      dispatch({ type: "OPEN_CREATE" });
+    }
+  }, [pendingAction, consumePendingAction]);
+
   const filtered = useMemo(() => {
     if (!data) return [];
-    if (!q.trim()) return data;
-    const s = q.toLowerCase();
+    if (!debouncedQ.trim()) return data;
+    const s = debouncedQ.toLowerCase();
     return data.filter((c) => c.name.toLowerCase().includes(s));
-  }, [data, q]);
+  }, [data, debouncedQ]);
 
   function openCreate() {
     dispatch({ type: "OPEN_CREATE" });
@@ -151,14 +163,14 @@ function CompaniesContent() {
 
   return (
     <div className="flex flex-1 flex-col gap-5 p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-[15px] font-semibold tracking-tight text-foreground">Companies</h1>
           <p className="mt-0.5 text-[13px] text-text-secondary">
             {data ? `${data.length} organization${data.length === 1 ? "" : "s"}` : "Manage client organizations"}
           </p>
         </div>
-        <Button onClick={openCreate} size="sm">
+        <Button onClick={openCreate} size="sm" className="w-full sm:w-auto">
           <Plus className="size-3.5" />
           New company
         </Button>

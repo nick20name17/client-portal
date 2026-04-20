@@ -42,10 +42,13 @@ export function UserAvatar({
   const bg = getAuthorColor(userId ?? name);
 
   return (
-    <Avatar className={cn("size-8", className)}>
+    <Avatar className={cn("@container/avatar size-8", className)}>
       {image ? <AvatarImage src={image} alt="" /> : null}
       <AvatarFallback
-        className={cn("font-semibold text-white tracking-tight", initials.length > 1 ? "text-[11px]" : "text-[13px]")}
+        className={cn(
+          "font-semibold text-white tracking-tight leading-none",
+          initials.length > 1 ? "text-[38cqw]" : "text-[46cqw]",
+        )}
         style={{ backgroundColor: bg }}
       >
         {initials || "?"}

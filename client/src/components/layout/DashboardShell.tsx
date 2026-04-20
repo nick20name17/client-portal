@@ -5,6 +5,8 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 import { AppSidebar } from "./AppSidebar";
 import { Header } from "./Header";
+import { CommandPalette } from "@/components/command-palette";
+import { UserDetailDialog } from "@/components/users/UserDetailDialog";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -16,6 +18,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider className="bg-page-canvas h-svh overflow-hidden">
+      <CommandPalette />
+      <UserDetailDialog />
       <AppSidebar />
       <SidebarInset className="flex min-h-0 flex-col overflow-hidden bg-transparent p-0 md:p-2">
         <div className="bg-background flex min-h-0 flex-1 flex-col overflow-hidden rounded-none shadow-sm ring-1 ring-black/4 md:rounded-xl dark:ring-white/6">

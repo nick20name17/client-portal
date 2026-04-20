@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -72,6 +72,7 @@ import {
 } from "@/api/projects/query";
 import { useStats } from "@/api/stats/query";
 import { apiErrorMsg } from "@/lib/api";
+import { useUIStore } from "@/stores/ui-store";
 import type { Project } from "@/types";
 
 export const Route = createFileRoute("/_authenticated/")({
@@ -465,6 +466,16 @@ function DashboardPage() {
     dispatch({ type: "OPEN_CREATE", payload: { companyId: isManager && companyId ? String(companyId) : "" } });
   }
 
+  const pendingAction = useUIStore((s) => s.pendingAction);
+  const consumePendingAction = useUIStore((s) => s.consumePendingAction);
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (pendingAction?.type === "create-project") {
+      consumePendingAction();
+      openCreate();
+    }
+  }, [pendingAction, isAdmin, consumePendingAction]);
+
   function openEdit(p: Project) {
     dispatch({ type: "OPEN_EDIT", payload: p });
   }
@@ -552,8 +563,8 @@ function DashboardPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-5 p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-[15px] font-semibold tracking-tight text-foreground">
             {isAdmin ? "All projects" : "My projects"}
           </h1>
@@ -562,7 +573,7 @@ function DashboardPage() {
           </p>
         </div>
         {isAdmin ? (
-          <Button onClick={openCreate} variant="outline" size="sm">
+          <Button onClick={openCreate} variant="outline" size="sm" className="w-full sm:w-auto">
             <Plus className="size-3.5" />
             New project
           </Button>

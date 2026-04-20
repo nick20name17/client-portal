@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMemo, useReducer, useState } from "react";
+import { useDebounce } from "use-debounce";
 import {
   Archive,
   ArchiveRestore,
@@ -430,6 +431,7 @@ function ProjectsContent() {
   const sync = useSyncProjectFiles();
 
   const [q, setQ] = useState("");
+  const [debouncedQ] = useDebounce(q, 300);
   const [companyFilter, setCompanyFilter] = useState<string>("");
   const [showArchived, setShowArchived] = useState(false);
   const [state, dispatch] = useReducer(projDialogReducer, initialProjDialogState);
@@ -443,14 +445,14 @@ function ProjectsContent() {
     if (companyFilter) {
       rows = rows.filter((p) => String(p.companyId) === companyFilter);
     }
-    if (!q.trim()) return rows;
-    const s = q.toLowerCase();
+    if (!debouncedQ.trim()) return rows;
+    const s = debouncedQ.toLowerCase();
     return rows.filter(
       (p) =>
         p.name.toLowerCase().includes(s) ||
         (p.company?.name ?? "").toLowerCase().includes(s),
     );
-  }, [data, q, companyFilter, appRole, companyId]);
+  }, [data, debouncedQ, companyFilter, appRole, companyId]);
 
   function openCreate() {
     dispatch({ type: "OPEN_CREATE", payload: { companyId: appRole === "manager" && companyId ? String(companyId) : "" } });
@@ -539,14 +541,14 @@ function ProjectsContent() {
 
   return (
     <div className="flex flex-1 flex-col gap-5 p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-[15px] font-semibold tracking-tight text-foreground">Projects</h1>
           <p className="mt-0.5 text-[13px] text-text-secondary">
             {data ? `${data.length} project${data.length === 1 ? "" : "s"}` : "Repositories and review workspaces"}
           </p>
         </div>
-        <Button onClick={openCreate} size="sm">
+        <Button onClick={openCreate} size="sm" className="w-full sm:w-auto">
           <Plus className="size-3.5" />
           New project
         </Button>
@@ -560,6 +562,7 @@ function ProjectsContent() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="pl-8 h-8 text-[13px]"
+            aria-label="Search projects"
           />
         </div>
         {appRole === "admin" && companies?.length ? (
@@ -587,10 +590,12 @@ function ProjectsContent() {
           {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="flex items-center gap-4 border-b border-border px-5 py-3.5 last:border-0"
+              className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-border px-5 py-3.5 last:border-0"
             >
               <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-4 w-24 ml-auto" />
+              <Skeleton className="h-4 w-24 hidden sm:block" />
+              <Skeleton className="h-4 w-8 hidden sm:block" />
+              <Skeleton className="h-4 w-12 hidden sm:block" />
               <Skeleton className="size-7 rounded-md" />
             </div>
           ))}

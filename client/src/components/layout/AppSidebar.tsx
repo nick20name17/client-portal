@@ -1,5 +1,5 @@
 
-import { Building2, FolderKanban, Tags, Users } from "lucide-react";
+import { Building2, FolderKanban, Search, Tags, Users } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 
 import {
@@ -8,6 +8,7 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -22,6 +23,7 @@ import {
 import { LogOut } from "lucide-react";
 import { RoleBadge } from "@/components/shared/RoleBadge";
 import type { Role } from "@/types";
+import { useUIStore } from "@/stores/ui-store";
 
 type NavItem = {
   href: string;
@@ -40,6 +42,32 @@ const adminNav: NavItem[] = [
   { href: "/users", label: "Users", icon: Users, iconBg: "bg-indigo-500" },
   { href: "/tags", label: "Tags", icon: Tags, iconBg: "bg-violet-500", adminOnly: true },
 ];
+
+function SidebarSearchTrigger() {
+  const setCommandOpen = useUIStore((s) => s.setCommandOpen);
+  const isMac =
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  return (
+    <button
+      type="button"
+      onClick={() => setCommandOpen(true)}
+      className={cn(
+        "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-[13px]",
+        "bg-background text-text-tertiary ring-1 ring-foreground/10 shadow-xs",
+        "hover:bg-background hover:text-foreground hover:ring-foreground/20",
+        "transition-[color,box-shadow,background-color] duration-150 active:scale-[0.99]",
+      )}
+      aria-label="Open command palette"
+    >
+      <Search className="size-[14px] shrink-0" />
+      <span className="flex-1 text-left font-medium">Search…</span>
+      <KbdGroup>
+        <Kbd className="bg-muted text-text-tertiary">{isMac ? "⌘" : "Ctrl"}</Kbd>
+        <Kbd className="bg-muted text-text-tertiary">K</Kbd>
+      </KbdGroup>
+    </button>
+  );
+}
 
 function ColoredNavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
   return (
@@ -114,8 +142,13 @@ export function AppSidebar() {
       {/* Nav */}
       <SidebarContent className="flex flex-col gap-0 overflow-y-auto overflow-x-hidden px-0">
         <div className="flex flex-1 flex-col px-3">
+          {/* Search trigger */}
+          <div className="pt-1 pb-1">
+            <SidebarSearchTrigger />
+          </div>
+
           {/* Main nav */}
-          <div className="flex flex-col gap-px pt-1">
+          <div className="flex flex-col gap-px">
             {mainNav.map((item) => (
               <ColoredNavLink key={item.href} item={item} isActive={isActive(item.href)} />
             ))}

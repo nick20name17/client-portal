@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useReducer, useState } from "react";
-import { FolderKanban, MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useReducer, useState } from "react";
+import { useDebounce } from "use-debounce";
+import { MoreHorizontal, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { RoleGate } from "@/components/shared/RoleGate";
@@ -50,6 +51,7 @@ import { useCreateUser, useDeleteUser, useUpdateUser, useUsers } from "@/api/use
 import type { Role, User } from "@/types";
 import { apiErrorMsg } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui-store";
 
 export const Route = createFileRoute("/_authenticated/users/")({
   component: UsersPage,
@@ -450,7 +452,11 @@ function UsersContent() {
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [companyFilter, setCompanyFilter] = useState<string>("");
   const [q, setQ] = useState("");
-  const [detailUser, setDetailUser] = useState<User | null>(null);
+  const [debouncedQ] = useDebounce(q, 300);
+
+  const openUserDetail = useUIStore((s) => s.openUserDetail);
+  const pendingAction = useUIStore((s) => s.pendingAction);
+  const consumePendingAction = useUIStore((s) => s.consumePendingAction);
 
   const { data: companies } = useCompanies();
   const { data, isPending } = useUsers({
@@ -463,14 +469,21 @@ function UsersContent() {
 
   const [state, dispatch] = useReducer(userDialogReducer, initialUserDialogState);
 
+  useEffect(() => {
+    if (pendingAction?.type === "create-user") {
+      consumePendingAction();
+      dispatch({ type: "OPEN_CREATE" });
+    }
+  }, [pendingAction, consumePendingAction]);
+
   const filtered = useMemo(() => {
     if (!data) return [];
-    if (!q.trim()) return data;
-    const s = q.toLowerCase();
+    if (!debouncedQ.trim()) return data;
+    const s = debouncedQ.toLowerCase();
     return data.filter(
       (u) => u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s),
     );
-  }, [data, q]);
+  }, [data, debouncedQ]);
 
   const companyName = (id: number | null) =>
     companies?.find((c) => c.id === id)?.name ?? "—";
@@ -523,14 +536,14 @@ function UsersContent() {
 
   return (
     <div className="flex flex-1 flex-col gap-5 p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-[15px] font-semibold tracking-tight text-foreground">Users</h1>
           <p className="mt-0.5 text-[13px] text-text-secondary">
             {data ? `${data.length} account${data.length === 1 ? "" : "s"}` : "Create and manage accounts"}
           </p>
         </div>
-        <Button onClick={() => dispatch({ type: "OPEN_CREATE" })} size="sm">
+        <Button onClick={() => dispatch({ type: "OPEN_CREATE" })} size="sm" className="w-full sm:w-auto">
           <Plus className="size-3.5" />
           New user
         </Button>
@@ -589,7 +602,7 @@ function UsersContent() {
         <UsersTable
           users={filtered}
           companyName={companyName}
-          onRowClick={setDetailUser}
+          onRowClick={(u) => openUserDetail(u.id)}
           onEdit={isAdmin ? (u) => dispatch({ type: "OPEN_EDIT", payload: u }) : undefined}
           onDelete={isAdmin ? (u) => dispatch({ type: "SET_DELETE_TARGET", payload: u }) : undefined}
         />
@@ -612,58 +625,6 @@ function UsersContent() {
         onClose={() => dispatch({ type: "SET_DELETE_TARGET", payload: null })}
         onConfirm={() => void confirmDelete()}
       />
-
-      <Dialog open={!!detailUser} onOpenChange={(o) => !o && setDetailUser(null)}>
-        <DialogContent className="max-w-sm">
-          {detailUser ? (
-            <>
-              <DialogHeader className="items-center text-center">
-                <UserAvatar name={detailUser.name} image={detailUser.image} userId={detailUser.id} className="size-14 text-lg" />
-                <DialogTitle className="mt-2">{detailUser.name}</DialogTitle>
-                <DialogDescription>{detailUser.email}</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3.5 py-2.5">
-                  <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Role</span>
-                  <RoleBadge role={detailUser.role} />
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3.5 py-2.5">
-                  <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">Company</span>
-                  <span className="text-[13px] font-medium text-foreground">{companyName(detailUser.companyId)}</span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2.5">
-                    <FolderKanban className="size-3.5 text-text-tertiary" />
-                    <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wide">
-                      Projects ({detailUser.projects?.length ?? 0})
-                    </span>
-                  </div>
-                  {detailUser.projects?.length ? (
-                    <div className="flex flex-col gap-1">
-                      {detailUser.projects.map((p) => (
-                        <Link
-                          key={p.id}
-                          to="/projects/$id/viewer"
-                          params={{ id: String(p.id) }}
-                          className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 transition-colors hover:bg-muted/50"
-                          onClick={() => setDetailUser(null)}
-                        >
-                          <div className="flex size-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: getProjectColor(p.id) + "18" }}>
-                            <FolderKanban className="size-3.5" style={{ color: getProjectColor(p.id) }} />
-                          </div>
-                          <span className="truncate text-[13px] font-medium text-foreground">{p.name}</span>
-                        </Link>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[13px] text-text-secondary text-center py-3">No projects yet</p>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

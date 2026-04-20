@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { Pencil, Plus, Tags as TagsIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,6 +31,7 @@ import { useCreateTag, useDeleteTag, useTags, useUpdateTag } from "@/api/tags/qu
 import type { Tag } from "@/types";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui-store";
 
 export const Route = createFileRoute("/_authenticated/tags/")({
   component: TagsPage,
@@ -104,6 +105,18 @@ function TagsContent() {
   const [state, dispatch] = useReducer(tagDialogReducer, initialTagDialog);
   const { dialogOpen, editing, name, color, deleteTarget } = state;
 
+  const pendingAction = useUIStore((s) => s.pendingAction);
+  const consumePendingAction = useUIStore((s) => s.consumePendingAction);
+  useEffect(() => {
+    if (pendingAction?.type === "edit-tag" && data) {
+      const tag = data.find((t) => t.id === pendingAction.id);
+      if (tag) {
+        consumePendingAction();
+        dispatch({ type: "OPEN_EDIT", payload: tag });
+      }
+    }
+  }, [pendingAction, data, consumePendingAction]);
+
   function openCreate() {
     dispatch({ type: "OPEN_CREATE" });
   }
@@ -144,14 +157,14 @@ function TagsContent() {
 
   return (
     <div className="flex flex-1 flex-col gap-5 p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-[15px] font-semibold tracking-tight text-foreground">Tags</h1>
           <p className="mt-0.5 text-[13px] text-text-secondary">
             {data ? `${data.length} label${data.length === 1 ? "" : "s"}` : "Labels for categorizing feedback"}
           </p>
         </div>
-        <Button onClick={openCreate} size="sm">
+        <Button onClick={openCreate} size="sm" className="w-full sm:w-auto">
           <Plus className="size-3.5" />
           New tag
         </Button>
