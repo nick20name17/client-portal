@@ -69,6 +69,8 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
 
   useEffect(() => {
     setPreviewReady(false);
+    const timer = setTimeout(() => setPreviewReady(true), 2000);
+    return () => clearTimeout(timer);
   }, [html]);
 
   const iframeH = Math.round(160 / scale);
