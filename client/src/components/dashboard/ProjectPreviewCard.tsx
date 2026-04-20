@@ -17,6 +17,18 @@ function useFirstFileHtml(projectId: number, fileId: number | undefined) {
   });
 }
 
+function injectHideScript(html: string): string {
+  const hideScript = `<script>(function(){var s=document.createElement("style");s.textContent="";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})()</script>`;
+
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, hideScript + "</body>");
+  }
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, hideScript + "</head>");
+  }
+  return html + hideScript;
+}
+
 export function ProjectPreviewCard({ project }: { project: Project }) {
   const accent = getProjectColor(project.id);
   const comments = project._count?.comments ?? 0;
@@ -42,12 +54,7 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
   const iframeH = Math.round(160 / scale);
 
   // Hide fixed/sticky positioned overlays (chat widgets, floating buttons) in preview thumbnail
-  const previewHtml = html
-    ? html.replace(
-        /<\/body>/i,
-        `<script>(function(){var s=document.createElement("style");s.textContent="";document.head.appendChild(s);function hide(){document.querySelectorAll("*").forEach(function(el){var p=getComputedStyle(el).position;if(p==="fixed"||p==="sticky")el.style.setProperty("display","none","important")});};hide();new MutationObserver(hide).observe(document.body,{childList:true,subtree:true})})()</script></body>`,
-      )
-    : null;
+  const previewHtml = html ? injectHideScript(html) : null;
 
   return (
     <Link
