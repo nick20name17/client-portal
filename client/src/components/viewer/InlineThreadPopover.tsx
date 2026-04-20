@@ -1,6 +1,8 @@
 
 import { useEffect, useReducer, useRef, useState } from "react";
-import { ArrowRight, CheckCircle, CornerDownRight, Link2Off, MessageSquare, Pencil, Reply, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowRight, Check, CheckCircle, Copy, CornerDownRight, Link2Off, MessageSquare, Pencil, Reply, RotateCcw, Trash2, X } from "lucide-react";
+
+import { commentToMarkdown, copyToClipboard, downloadMarkdown, mdFilename } from "@/lib/comment-md";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { TagBadge } from "@/components/comments/TagBadge";
@@ -241,6 +243,22 @@ export function InlineThreadPopover({
   const isUnlinked = !hasAnchor;
   const [state, dispatch] = useReducer(threadPopoverReducer, initialThreadPopover);
   const { replyText, submitting, resolvePending, deletePending, replyingTo } = state;
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopyMd(shift: boolean) {
+    const md = commentToMarkdown(comment, { currentUser });
+    if (shift) {
+      downloadMarkdown(mdFilename(`comment-${comment.id}`), md);
+      return;
+    }
+    const ok = await copyToClipboard(md);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } else {
+      downloadMarkdown(mdFilename(`comment-${comment.id}`), md);
+    }
+  }
   const inputRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -348,6 +366,19 @@ export function InlineThreadPopover({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">{comment.resolved ? "Unresolve" : "Resolve"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={(e) => void handleCopyMd(e.shiftKey)}
+              >
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{copied ? "Copied!" : "Copy as Markdown (shift = download)"}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>

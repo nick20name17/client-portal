@@ -1,7 +1,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Check, CheckCircle, ChevronDown, FileText, GripVertical, Link2Off, MessageSquarePlus, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Check, CheckCircle, ChevronDown, Copy, Download, FileText, GripVertical, Link2Off, MessageSquarePlus, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
+
+import { commentToMarkdown, commentsToMarkdown, copyToClipboard, downloadMarkdown, mdFilename } from "@/lib/comment-md";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { TagBadge } from "@/components/comments/TagBadge";
@@ -42,6 +44,7 @@ interface CommentThreadProps {
   isOrphaned: boolean;
   isUnlinked?: boolean;
   versionSha?: string;
+  filePath?: string;
   onClick: () => void;
   onHover: (anchor: Anchor | null) => void;
   onResolve: (id: number, resolved: boolean) => void | Promise<void>;
@@ -60,6 +63,7 @@ function CommentThread({
   isOrphaned,
   isUnlinked,
   versionSha,
+  filePath,
   onClick,
   onHover,
   onResolve,
@@ -75,6 +79,23 @@ function CommentThread({
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(comment.body);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopyMd() {
+    const md = commentToMarkdown(comment, { currentUser, filePath });
+    const ok = await copyToClipboard(md);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } else {
+      downloadMarkdown(mdFilename(`comment-${comment.id}`), md);
+    }
+  }
+
+  function handleDownloadMd() {
+    const md = commentToMarkdown(comment, { currentUser, filePath });
+    downloadMarkdown(mdFilename(`comment-${comment.id}`), md);
+  }
 
   const canEdit = currentUser?.id === comment.authorId && !!onEdit;
   const canDel = currentUser?.id === comment.authorId && !!onDelete && replies.length === 0;
@@ -225,6 +246,19 @@ function CommentThread({
                     >
                       {comment.resolved ? <RotateCcw className="size-3" /> : <CheckCircle className="size-3" />}
                       {comment.resolved ? "Unresolve" : "Resolve"}
+                    </button>
+                    <button
+                      type="button"
+                      title={copied ? "Copied!" : "Copy as Markdown (shift-click to download)"}
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.shiftKey) handleDownloadMd();
+                        else void handleCopyMd();
+                      }}
+                    >
+                      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                      {copied ? "Copied" : "MD"}
                     </button>
                     {canEdit ? (
                       <button
@@ -522,6 +556,12 @@ export function CommentsSidebar({
     return map;
   }, [versions]);
 
+  const filePathById = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const f of files ?? []) map[f.id] = f.path;
+    return map;
+  }, [files]);
+
   const topLevel = useMemo(() => (comments ?? []).filter((c) => !c.parentId), [comments]);
   const openCount = topLevel.filter((c) => !c.resolved).length;
 
@@ -560,6 +600,24 @@ export function CommentsSidebar({
     return rows;
   }, [filtered, searchQuery, selectedTagIds]);
 
+  const exportable = useMemo(() => {
+    if (!currentFileId) return [];
+    const fid = Number(currentFileId);
+    return topLevel.filter((c) => c.fileId === fid && !c.resolved);
+  }, [topLevel, currentFileId]);
+
+  function handleBulkExport() {
+    if (!exportable.length) return;
+    const filePath = filePathById[Number(currentFileId)] ?? undefined;
+    const md = commentsToMarkdown(exportable, {
+      currentUser,
+      filePath,
+      title: filePath ? `Comments — ${filePath}` : "Comments export",
+    });
+    const base = filePath ? `comments-${filePath.split("/").pop() ?? "file"}` : "comments";
+    downloadMarkdown(mdFilename(base), md);
+  }
+
   const filters = [
     { key: "all" as const, label: `All (${topLevel.length})` },
     { key: "open" as const, label: `Open (${openCount})` },
@@ -580,6 +638,7 @@ export function CommentsSidebar({
           isOrphaned={opts.isOrphaned}
           isUnlinked={opts.isUnlinked}
           versionSha={c.versionId ? versionShaById[c.versionId] : undefined}
+          filePath={filePathById[c.fileId]}
           onClick={() => !c.resolved && onSelectThread(c.id)}
           onHover={onHover}
           onResolve={onResolve}
@@ -619,6 +678,21 @@ export function CommentsSidebar({
           ) : null}
         </div>
 
+
+        <button
+          type="button"
+          aria-label="Export open comments for this file as Markdown"
+          title={exportable.length ? `Export ${exportable.length} open comment${exportable.length === 1 ? "" : "s"} as .md` : "No open comments to export"}
+          disabled={!exportable.length}
+          onClick={handleBulkExport}
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Download className="size-3.5" />
+          <span className="hidden sm:inline">Export</span>
+          {exportable.length ? (
+            <span className="text-[10px] text-muted-foreground/60">({exportable.length})</span>
+          ) : null}
+        </button>
 
         {onClose ? (
           <button
