@@ -30,7 +30,12 @@ export const fileVersionsService = {
 
   checkNewVersions: async (projectId: string) => {
     const { data } = await apiClient.post<
-      { fileId: number; filePath: string; newCount: number }[]
+      {
+        fileId: number;
+        filePath: string;
+        latestCommitSha: string;
+        latestCommitDate: string | null;
+      }[]
     >(`/projects/${projectId}/check-new-versions`);
     return data;
   },

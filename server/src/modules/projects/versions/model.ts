@@ -38,7 +38,8 @@ export const FileVersionModelSchema = {
     t.Object({
       fileId: t.Number(),
       filePath: t.String(),
-      newCount: t.Number(),
+      latestCommitSha: t.String(),
+      latestCommitDate: t.Union([t.Date(), t.Null()]),
     }),
   ),
 } as const;

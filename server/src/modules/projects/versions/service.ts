@@ -159,7 +159,7 @@ export const FileVersionService = {
     return toInsert.length;
   },
 
-  /** Check all project files for new GitHub versions. Returns files that have new commits. */
+  /** Syncs and returns latest commit SHA per file. Client diffs against its local seen-map. */
   async checkNewVersions(user: SessionUser, projectId: string) {
     if (!(await canViewProject(user, projectId))) forbidden();
     const p = await getProjectOrNull(projectId);
@@ -172,20 +172,36 @@ export const FileVersionService = {
       .from(projectFiles)
       .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.active, true)));
 
-    const synced = await Promise.all(
+    await Promise.all(
       files.map(async (f) => {
         try {
-          const n = await FileVersionService.syncVersionsForFile(
+          await FileVersionService.syncVersionsForFile(
             projectId, String(f.id), f.path, parsed.owner, parsed.repo, null,
           );
-          return { fileId: f.id, filePath: f.path, newCount: n ?? 0 };
         } catch (e) {
           logger.error(`[checkNewVersions] ${f.path}:`, e);
-          return { fileId: f.id, filePath: f.path, newCount: 0 };
         }
       }),
     );
-    return synced.filter((s) => s.newCount > 0);
+
+    const results = await Promise.all(
+      files.map(async (f) => {
+        const [latest] = await db
+          .select({ commitSha: fileVersions.commitSha, commitDate: fileVersions.commitDate })
+          .from(fileVersions)
+          .where(eq(fileVersions.fileId, String(f.id)))
+          .orderBy(desc(fileVersions.commitDate))
+          .limit(1);
+        if (!latest) return null;
+        return {
+          fileId: f.id,
+          filePath: f.path,
+          latestCommitSha: latest.commitSha,
+          latestCommitDate: latest.commitDate,
+        };
+      }),
+    );
+    return results.filter((r): r is NonNullable<typeof r> => r !== null);
   },
 
   /** Fetch full commit history for a file and upsert all versions. Returns updated list. */

@@ -1149,35 +1149,65 @@ function useProjectViewerData(projectId: string) {
   useProjectWS(projectId);
 
   // Auto-check for new file versions every 5 min
-  const { data: newVersionsData } = useCheckNewVersions(projectId);
-  const shownNewVersionsRef = useRef<string | null>(null);
+  const { data: latestVersionsData } = useCheckNewVersions(projectId);
 
   useEffect(() => {
-    if (!newVersionsData?.length) return;
-    const key = newVersionsData.map((e) => `${e.fileId}:${e.newCount}`).sort().join(",");
-    if (shownNewVersionsRef.current === key) return;
-    shownNewVersionsRef.current = key;
-    for (const entry of newVersionsData) {
+    if (!latestVersionsData || !projectId) return;
+    const storageKey = `file-versions-seen:${projectId}`;
+    const raw = localStorage.getItem(storageKey);
+    const isBootstrap = raw === null;
+    let seen: Record<string, string> = {};
+    if (raw) {
+      try { seen = JSON.parse(raw); } catch { seen = {}; }
+    }
+
+    const currentMap: Record<string, string> = {};
+    const changed: typeof latestVersionsData = [];
+    for (const entry of latestVersionsData) {
+      const key = String(entry.fileId);
+      currentMap[key] = entry.latestCommitSha;
+      if (!isBootstrap && seen[key] !== entry.latestCommitSha) changed.push(entry);
+    }
+
+    if (isBootstrap) {
+      localStorage.setItem(storageKey, JSON.stringify(currentMap));
+      return;
+    }
+    if (changed.length === 0) return;
+
+    for (const entry of changed) {
       void queryClient.invalidateQueries({
         queryKey: FILE_VERSION_KEYS.all(projectId, String(entry.fileId)),
       });
     }
-    for (const entry of newVersionsData) {
-      const fileName = entry.filePath.split("/").pop() ?? entry.filePath;
-      toast(`New version available for ${fileName}`, {
-        description: `${entry.newCount} new commit${entry.newCount > 1 ? "s" : ""} found`,
-        duration: Infinity,
-        action: {
-          label: "Change version",
-          onClick: () => {
-            void setFileId(String(entry.fileId));
-            dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: true });
-          },
+
+    const sorted = [...changed].sort((a, b) => {
+      const ad = a.latestCommitDate ? new Date(a.latestCommitDate).getTime() : 0;
+      const bd = b.latestCommitDate ? new Date(b.latestCommitDate).getTime() : 0;
+      return bd - ad;
+    });
+    const primary = sorted[0]!;
+    const primaryName = primary.filePath.split("/").pop() ?? primary.filePath;
+    const description = changed.length > 1 ? `${primaryName} +${changed.length - 1} more` : primaryName;
+    const currentAffected = changed.find((e) => String(e.fileId) === fileId);
+    const target = currentAffected ?? primary;
+    const ack = () => localStorage.setItem(storageKey, JSON.stringify(currentMap));
+
+    toast("New version available", {
+      id: "new-file-version",
+      description,
+      duration: 15_000,
+      action: {
+        label: "Change version",
+        onClick: () => {
+          ack();
+          void setFileId(String(target.fileId));
+          dispatch({ type: "SET_FORCE_OPEN_VERSION_SELECTOR", open: true });
         },
-        cancel: { label: "Dismiss", onClick: () => {} },
-      });
-    }
-  }, [newVersionsData, setFileId, queryClient, projectId]);
+      },
+      cancel: { label: "Dismiss", onClick: ack },
+    });
+  }, [latestVersionsData, setFileId, queryClient, projectId, fileId]);
 
   useEffect(() => {
     if (!files?.length) return;
