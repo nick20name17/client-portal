@@ -239,7 +239,7 @@ function CommentThread({
                         <button
                           type="button"
                           aria-label={comment.resolved ? "Unresolve" : "Resolve"}
-                          className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
                           onClick={(e) => { e.stopPropagation(); void onResolve(comment.id, !comment.resolved); }}
                         >
                           {comment.resolved ? <RotateCcw className="size-3.5" /> : <CheckCircle className="size-3.5" />}
@@ -252,7 +252,7 @@ function CommentThread({
                         <button
                           type="button"
                           aria-label="Copy as Markdown"
-                          className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (e.shiftKey) handleDownloadMd();
@@ -270,7 +270,7 @@ function CommentThread({
                           <button
                             type="button"
                             aria-label="Edit"
-                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
                             onClick={(e) => { e.stopPropagation(); setEditText(comment.body); setEditing(true); }}
                           >
                             <Pencil className="size-3.5" />
@@ -285,7 +285,7 @@ function CommentThread({
                           <button
                             type="button"
                             aria-label="Delete"
-                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                             onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
                           >
                             <Trash2 className="size-3.5" />
