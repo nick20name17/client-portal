@@ -1681,7 +1681,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       <SidebarProvider
         open={commentsOpen}
         onOpenChange={(open) => dispatch({ type: "SET_COMMENTS_OPEN", open })}
-        style={{ "--sidebar-width": "20rem" } as CSSProperties}
+        style={{ "--sidebar-width": "21.25rem" } as CSSProperties}
       >
         <SidebarInset className="h-dvh overflow-hidden bg-background">
           {/* Main canvas area — full height, toolbar floats on top */}

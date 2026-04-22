@@ -10,7 +10,7 @@ import { TagBadge } from "@/components/comments/TagBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MentionBody } from "@/lib/mention-utils";
 import { cn, formatRelativeShort } from "@/lib/utils";
 import type { Anchor, Comment, FileVersion, Tag, User } from "@/types";
@@ -234,61 +234,80 @@ function CommentThread({
                   </span>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className={cn(
-                        "flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] transition-colors",
-                        comment.resolved
-                          ? "text-muted-foreground hover:text-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                      onClick={(e) => { e.stopPropagation(); void onResolve(comment.id, !comment.resolved); }}
-                    >
-                      {comment.resolved ? <RotateCcw className="size-3" /> : <CheckCircle className="size-3" />}
-                      {comment.resolved ? "Unresolve" : "Resolve"}
-                    </button>
-                    <button
-                      type="button"
-                      title={copied ? "Copied!" : "Copy as Markdown (shift-click to download)"}
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (e.shiftKey) handleDownloadMd();
-                        else void handleCopyMd();
-                      }}
-                    >
-                      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-                      {copied ? "Copied" : "MD"}
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={comment.resolved ? "Unresolve" : "Resolve"}
+                          className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          onClick={(e) => { e.stopPropagation(); void onResolve(comment.id, !comment.resolved); }}
+                        >
+                          {comment.resolved ? <RotateCcw className="size-3.5" /> : <CheckCircle className="size-3.5" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{comment.resolved ? "Unresolve" : "Resolve"}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="Copy as Markdown"
+                          className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (e.shiftKey) handleDownloadMd();
+                            else void handleCopyMd();
+                          }}
+                        >
+                          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{copied ? "Copied!" : "Copy as Markdown (shift-click to download)"}</TooltipContent>
+                    </Tooltip>
                     {canEdit ? (
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-                        onClick={(e) => { e.stopPropagation(); setEditText(comment.body); setEditing(true); }}
-                      >
-                        <Pencil className="size-3" />
-                        Edit
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Edit"
+                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                            onClick={(e) => { e.stopPropagation(); setEditText(comment.body); setEditing(true); }}
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>Edit</TooltipContent>
+                      </Tooltip>
                     ) : null}
                     {canDel ? (
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:text-destructive"
-                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-                      >
-                        <Trash2 className="size-3" />
-                        Delete
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Delete"
+                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+                            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete</TooltipContent>
+                      </Tooltip>
                     ) : null}
                     {isOrphaned && onUnlink ? (
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-red-500/70 transition-colors hover:bg-red-500/10 hover:text-red-500"
-                        onClick={(e) => { e.stopPropagation(); onUnlink(comment.id); }}
-                      >
-                        <Link2Off className="size-3" />
-                        Unlink
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Unlink"
+                            className="inline-flex items-center justify-center rounded p-1 text-red-500/70 transition-colors hover:bg-red-500/10 hover:text-red-500"
+                            onClick={(e) => { e.stopPropagation(); onUnlink(comment.id); }}
+                          >
+                            <Link2Off className="size-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>Unlink</TooltipContent>
+                      </Tooltip>
                     ) : null}
                   </>
                 )}
