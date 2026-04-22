@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { Check, GitCommit, Loader2, Search, Trash2 } from "lucide-react";
+import { Check, History, Loader2, Search, Trash2 } from "lucide-react";
 
 import { toast } from "sonner";
 
@@ -30,8 +30,10 @@ function formatDate(dateStr: string | null): string {
   }
 }
 
-function versionLabel(v: FileVersion): string {
-  return v.label ?? v.commitSha.slice(0, 7);
+function versionNumberFor(v: FileVersion, all: FileVersion[]): number {
+  const idx = all.findIndex((x) => x.id === v.id);
+  // newest (idx 0) = highest number; oldest = 1
+  return idx >= 0 ? all.length - idx : all.length;
 }
 
 export function VersionSelector({
@@ -103,23 +105,29 @@ export function VersionSelector({
 
   const sortedVersions = versions ?? [];
   const q = search.toLowerCase();
-  const filteredVersions = sortedVersions.filter(
-    (v) =>
-      !q ||
+  const filteredVersions = sortedVersions.filter((v) => {
+    if (!q) return true;
+    const versionNum = versionNumberFor(v, sortedVersions);
+    return (
+      `version ${versionNum}`.includes(q) ||
       v.commitSha.toLowerCase().includes(q) ||
       v.commitMessage?.toLowerCase().includes(q) ||
       v.label?.toLowerCase().includes(q) ||
-      v.commitAuthor?.toLowerCase().includes(q),
-  );
+      v.commitAuthor?.toLowerCase().includes(q)
+    );
+  });
+
+  const triggerVersion = selected ?? sortedVersions[0];
+  const triggerLabel = triggerVersion
+    ? `Version ${versionNumberFor(triggerVersion, sortedVersions)}`
+    : "No versions";
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-6 gap-1 px-2 text-xs font-mono">
-          <GitCommit className="size-3 shrink-0" />
-          <span className="max-w-20 truncate">
-            {selected ? versionLabel(selected) : sortedVersions[0] ? versionLabel(sortedVersions[0]) : "No versions"}
-          </span>
+        <Button variant="outline" size="sm" className="h-6 gap-1 px-2 text-xs">
+          <History className="size-3 shrink-0" />
+          <span className="max-w-24 truncate">{triggerLabel}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0" align="start">
@@ -152,7 +160,9 @@ export function VersionSelector({
                   <Check className={cn("mt-0.5 size-3 shrink-0", v.id === selectedVersionId ? "opacity-100" : "opacity-0")} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-xs font-medium">{v.commitSha.slice(0, 7)}</span>
+                      <span className="text-xs font-medium">
+                        Version {versionNumberFor(v, sortedVersions)}
+                      </span>
                       {v.label && (
                         <span className="truncate text-xs text-muted-foreground">
                           — {v.label}
@@ -165,7 +175,7 @@ export function VersionSelector({
                           </span>
                         ) : null}
                         {v.id === selectedVersionId && (
-                          <span className="text-[10px] text-primary">active</span>
+                          <span className="text-[10px] text-primary">current</span>
                         )}
                       </div>
                     </div>
@@ -181,7 +191,7 @@ export function VersionSelector({
                     )}
                   </div>
                 </div>
-                {canManage && (
+                {canManage && v.id !== selectedVersionId && (
                   <button
                     className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus:opacity-100"
                     onClick={(e) => void handleDelete(v.id, e)}
