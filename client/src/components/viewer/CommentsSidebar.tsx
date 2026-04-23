@@ -1,9 +1,30 @@
-
-import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Check, CheckCircle, ChevronDown, Copy, Download, FileText, GripVertical, Link2Off, MessageSquarePlus, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, X } from "lucide-react";
+import {
+  Check,
+  CheckCircle,
+  ChevronDown,
+  Copy,
+  Download,
+  FileText,
+  GripVertical,
+  Link2Off,
+  MessageSquarePlus,
+  Pencil,
+  RotateCcw,
+  Search,
+  Tag as TagIcon,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { commentToMarkdown, commentsToMarkdown, copyToClipboard, downloadMarkdown, mdFilename } from "@/lib/comment-md";
+import {
+  commentToMarkdown,
+  commentsToMarkdown,
+  copyToClipboard,
+  downloadMarkdown,
+  mdFilename,
+} from "@/lib/comment-md";
 
 import { MentionTextarea, type MentionMember } from "@/components/comments/MentionTextarea";
 import { TagBadge } from "@/components/comments/TagBadge";
@@ -29,7 +50,6 @@ function commentAuthorLabel(comment: Comment, currentUser?: User | null): string
   }
   return `user-${comment.authorId.slice(0, 6)}`;
 }
-
 
 function isEdited(comment: Comment): boolean {
   return comment.updatedAt !== comment.createdAt;
@@ -108,7 +128,11 @@ function CommentThread({
 
   function handleSaveEdit() {
     const t = editText.trim();
-    if (!t || t === comment.body) { setEditing(false); setEditText(comment.body); return; }
+    if (!t || t === comment.body) {
+      setEditing(false);
+      setEditText(comment.body);
+      return;
+    }
     setEditing(false);
     void onEdit!(comment.id, t);
   }
@@ -119,14 +143,23 @@ function CommentThread({
       data-comment-root-id={comment.id}
       className={cn(
         "group/card rounded-lg px-3 py-2.5 shadow-[var(--shadow-card)] transition-all duration-100",
-        isOrphaned ? "border border-red-500/30 bg-red-500/5" : isUnlinked ? "border border-amber-500/30 bg-amber-500/5" : "bg-background",
+        isOrphaned
+          ? "border border-red-500/30 bg-red-500/5"
+          : isUnlinked
+            ? "border border-amber-500/30 bg-amber-500/5"
+            : "bg-background",
         isActive ? "ring-1 ring-primary/30" : "hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)]",
         comment.resolved && "opacity-50 cursor-default",
         !comment.resolved && (onReLink ? "cursor-grab" : "cursor-pointer"),
         isDragging && "opacity-40",
       )}
       onClick={() => !editing && onClick()}
-      onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !editing) { e.preventDefault(); onClick(); } }}
+      onKeyDown={(e) => {
+        if ((e.key === "Enter" || e.key === " ") && !editing) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onMouseEnter={() => !comment.resolved && onHover(comment.anchor as Anchor)}
       onMouseLeave={() => !comment.resolved && onHover(null)}
       {...(onReLink ? listeners : {})}
@@ -143,17 +176,21 @@ function CommentThread({
         />
         <div className="min-w-0 flex-1">
           {/* status badge */}
-          {(isOrphaned || isUnlinked || comment.resolved) ? (
+          {isOrphaned || isUnlinked || comment.resolved ? (
             <div className="mb-0.5 flex items-center gap-1.5">
               {isOrphaned ? (
-                <span className="text-[11px] font-medium text-red-500">Related element not found</span>
+                <span className="text-[11px] font-medium text-red-500">
+                  Related element not found
+                </span>
               ) : isUnlinked ? (
                 <span className="flex w-full items-center text-[11px] font-medium text-amber-500">
                   Drag to canvas to link
                   <GripVertical className="ml-auto size-4" />
                 </span>
               ) : comment.resolved ? (
-                <span className="text-[11px] font-medium" style={{ color: "var(--status-done)" }}>Resolved</span>
+                <span className="text-[11px] font-medium" style={{ color: "var(--status-done)" }}>
+                  Resolved
+                </span>
               ) : null}
             </div>
           ) : null}
@@ -180,8 +217,14 @@ function CommentThread({
                 rows={3}
                 className="px-2 py-1.5 text-[13px] leading-relaxed focus-visible:border-primary/50 focus-visible:ring-1 focus-visible:ring-primary/30"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void handleSaveEdit(); }
-                  if (e.key === "Escape") { setEditing(false); setEditText(comment.body); }
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    void handleSaveEdit();
+                  }
+                  if (e.key === "Escape") {
+                    setEditing(false);
+                    setEditText(comment.body);
+                  }
                 }}
               />
               <div className="mt-1 flex items-center gap-1.5">
@@ -195,7 +238,10 @@ function CommentThread({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setEditing(false); setEditText(comment.body); }}
+                  onClick={() => {
+                    setEditing(false);
+                    setEditText(comment.body);
+                  }}
                   className="rounded-md px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
                 >
                   Cancel
@@ -203,7 +249,12 @@ function CommentThread({
               </div>
             </div>
           ) : (
-            <p className={cn("mt-0.5 text-[13px] leading-relaxed text-foreground/80", comment.resolved && "line-through")}>
+            <p
+              className={cn(
+                "mt-0.5 text-[13px] leading-relaxed text-foreground/80",
+                comment.resolved && "line-through",
+              )}
+            >
               <MentionBody text={comment.body} />
             </p>
           )}
@@ -227,10 +278,29 @@ function CommentThread({
               ) : null}
               <div className="ml-auto flex items-center gap-1.5 invisible group-hover/card:visible">
                 {confirmDelete ? (
-                  <span role="presentation" className="flex items-center gap-1.5 text-[12px]" onClick={(e) => e.stopPropagation()}>
+                  <span
+                    role="presentation"
+                    className="flex items-center gap-1.5 text-[12px]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <span className="text-destructive">Delete?</span>
-                    <button type="button" onClick={() => { void onDelete!(comment.id); setConfirmDelete(false); }} className="font-medium text-destructive hover:underline">Yes</button>
-                    <button type="button" onClick={() => setConfirmDelete(false)} className="text-muted-foreground hover:text-foreground">No</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void onDelete!(comment.id);
+                        setConfirmDelete(false);
+                      }}
+                      className="font-medium text-destructive hover:underline"
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      No
+                    </button>
                   </span>
                 ) : (
                   <>
@@ -240,9 +310,16 @@ function CommentThread({
                           type="button"
                           aria-label={comment.resolved ? "Unresolve" : "Resolve"}
                           className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-                          onClick={(e) => { e.stopPropagation(); void onResolve(comment.id, !comment.resolved); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void onResolve(comment.id, !comment.resolved);
+                          }}
                         >
-                          {comment.resolved ? <RotateCcw className="size-3.5" /> : <CheckCircle className="size-3.5" />}
+                          {comment.resolved ? (
+                            <RotateCcw className="size-3.5" />
+                          ) : (
+                            <CheckCircle className="size-3.5" />
+                          )}
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>{comment.resolved ? "Unresolve" : "Resolve"}</TooltipContent>
@@ -262,7 +339,9 @@ function CommentThread({
                           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent>{copied ? "Copied!" : "Copy as Markdown (shift-click to download)"}</TooltipContent>
+                      <TooltipContent>
+                        {copied ? "Copied!" : "Copy as Markdown (shift-click to download)"}
+                      </TooltipContent>
                     </Tooltip>
                     {canEdit ? (
                       <Tooltip>
@@ -271,7 +350,11 @@ function CommentThread({
                             type="button"
                             aria-label="Edit"
                             className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-                            onClick={(e) => { e.stopPropagation(); setEditText(comment.body); setEditing(true); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditText(comment.body);
+                              setEditing(true);
+                            }}
                           >
                             <Pencil className="size-3.5" />
                           </button>
@@ -286,7 +369,10 @@ function CommentThread({
                             type="button"
                             aria-label="Delete"
                             className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDelete(true);
+                            }}
                           >
                             <Trash2 className="size-3.5" />
                           </button>
@@ -301,7 +387,10 @@ function CommentThread({
                             type="button"
                             aria-label="Unlink"
                             className="inline-flex items-center justify-center rounded p-1 text-red-500/70 transition-colors hover:bg-red-500/10 hover:text-red-500"
-                            onClick={(e) => { e.stopPropagation(); onUnlink(comment.id); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUnlink(comment.id);
+                            }}
                           >
                             <Link2Off className="size-3.5" />
                           </button>
@@ -336,7 +425,10 @@ function SidebarFilterBar({
   onToggleTag: (id: number) => void;
 }) {
   return (
-    <div className="bg-bg-secondary px-3 pt-2.5 pb-2.5 space-y-2" style={{ borderBottom: "1px solid var(--border)" }}>
+    <div
+      className="bg-bg-secondary px-3 pt-2.5 pb-2.5 space-y-2"
+      style={{ borderBottom: "1px solid var(--border)" }}
+    >
       <div className="flex rounded-lg bg-muted/80 p-0.5">
         {filters.map((f) => (
           <button
@@ -366,7 +458,9 @@ function SidebarFilterBar({
                 <TagIcon className="size-3 shrink-0" />
                 Tags
                 {selectedTagIds.size > 0 ? (
-                  <span className="text-[11px] font-medium text-foreground">({selectedTagIds.size})</span>
+                  <span className="text-[11px] font-medium text-foreground">
+                    ({selectedTagIds.size})
+                  </span>
                 ) : (
                   <ChevronDown className="size-3 opacity-40" />
                 )}
@@ -396,26 +490,28 @@ function SidebarFilterBar({
 
           {selectedTagIds.size > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {tagOptions.filter((t) => selectedTagIds.has(t.id)).map((tag) => (
-                <span
-                  key={tag.id}
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
-                  style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
-                >
+              {tagOptions
+                .filter((t) => selectedTagIds.has(t.id))
+                .map((tag) => (
                   <span
-                    className="size-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag.color }}
-                  />
-                  {tag.name}
-                  <button
-                    type="button"
-                    onClick={() => onToggleTag(tag.id)}
-                    className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                    key={tag.id}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
+                    style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
                   >
-                    <X className="size-2.5" />
-                  </button>
-                </span>
-              ))}
+                    <span
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    {tag.name}
+                    <button
+                      type="button"
+                      onClick={() => onToggleTag(tag.id)}
+                      className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                    >
+                      <X className="size-2.5" />
+                    </button>
+                  </span>
+                ))}
             </div>
           ) : null}
         </div>
@@ -504,7 +600,12 @@ function groupCommentsByPage(
         groups.push({ key: `${f.id}-${vid}`, label, isCurrent, comments: comms });
       }
     } else {
-      groups.push({ key: String(f.id), label: formatFileName(f.path), isCurrent, comments: fileComments });
+      groups.push({
+        key: String(f.id),
+        label: formatFileName(f.path),
+        isCurrent,
+        comments: fileComments,
+      });
     }
   }
   return groups.length > 1 ? groups : null;
@@ -595,7 +696,9 @@ export function CommentsSidebar({
     if (!activeThreadId) return;
     const container = listRef.current;
     if (!container) return;
-    const target = container.querySelector<HTMLElement>(`[data-comment-root-id="${activeThreadId}"]`);
+    const target = container.querySelector<HTMLElement>(
+      `[data-comment-root-id="${activeThreadId}"]`,
+    );
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [activeThreadId, filtered]);
@@ -643,7 +746,11 @@ export function CommentsSidebar({
     { key: "resolved" as const, label: `Resolved (${resolvedCount})` },
   ];
 
-  function renderThreadList(list: Comment[], startIndex: number, opts: { isOrphaned: boolean; isUnlinked?: boolean }) {
+  function renderThreadList(
+    list: Comment[],
+    startIndex: number,
+    opts: { isOrphaned: boolean; isUnlinked?: boolean },
+  ) {
     return list.map((c, i) => {
       const idx = startIndex + i;
       return (
@@ -672,134 +779,155 @@ export function CommentsSidebar({
 
   return (
     <TooltipProvider delayDuration={300}>
-    <div className="flex h-full min-h-0 flex-col bg-bg-secondary">
+      <div className="flex h-full min-h-0 flex-col bg-bg-secondary">
+        {/* ── Header: search + more ── */}
+        <div
+          className="flex items-center gap-2 bg-bg-secondary px-3 py-2.5"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          {/* Search input */}
+          <div className="relative flex flex-1 items-center">
+            <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-3 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
 
-      {/* ── Header: search + more ── */}
-      <div className="flex items-center gap-2 bg-bg-secondary px-3 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
-        {/* Search input */}
-        <div className="relative flex flex-1 items-center">
-          <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-3 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
-          />
-          {searchQuery ? (
+          <button
+            type="button"
+            aria-label="Export open comments for this file as Markdown"
+            title={
+              exportable.length
+                ? `Export ${exportable.length} open comment${exportable.length === 1 ? "" : "s"} as .md`
+                : "No open comments to export"
+            }
+            disabled={!exportable.length}
+            onClick={handleBulkExport}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="size-3.5" />
+            <span className="hidden sm:inline">Export</span>
+            {exportable.length ? (
+              <span className="text-[10px] text-muted-foreground/60">({exportable.length})</span>
+            ) : null}
+          </button>
+
+          {onClose ? (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2 text-muted-foreground hover:text-foreground"
+              aria-label="Close"
+              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground lg:hidden"
+              onClick={onClose}
             >
               <X className="size-3.5" />
             </button>
           ) : null}
         </div>
 
+        {/* ── Segmented filter + tag filter ── */}
+        <SidebarFilterBar
+          filter={filter}
+          onFilterChange={setFilter}
+          filters={filters}
+          tagOptions={tagOptions}
+          selectedTagIds={selectedTagIds}
+          onToggleTag={toggleTag}
+        />
 
-        <button
-          type="button"
-          aria-label="Export open comments for this file as Markdown"
-          title={exportable.length ? `Export ${exportable.length} open comment${exportable.length === 1 ? "" : "s"} as .md` : "No open comments to export"}
-          disabled={!exportable.length}
-          onClick={handleBulkExport}
-          className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        {/* ── Thread list ── */}
+        <div
+          ref={listRef}
+          className="min-h-0 flex-1 overflow-y-auto bg-bg-secondary px-3 py-2.5 space-y-1.5"
+          role="list"
         >
-          <Download className="size-3.5" />
-          <span className="hidden sm:inline">Export</span>
-          {exportable.length ? (
-            <span className="text-[10px] text-muted-foreground/60">({exportable.length})</span>
-          ) : null}
-        </button>
-
-        {onClose ? (
-          <button
-            type="button"
-            aria-label="Close"
-            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground lg:hidden"
-            onClick={onClose}
-          >
-            <X className="size-3.5" />
-          </button>
-        ) : null}
-      </div>
-
-      {/* ── Segmented filter + tag filter ── */}
-      <SidebarFilterBar
-        filter={filter}
-        onFilterChange={setFilter}
-        filters={filters}
-        tagOptions={tagOptions}
-        selectedTagIds={selectedTagIds}
-        onToggleTag={toggleTag}
-      />
-
-      {/* ── Thread list ── */}
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto bg-bg-secondary px-3 py-2.5 space-y-1.5" role="list">
-        {loading ? (
-          <ThreadListSkeleton />
-        ) : filteredBySearch.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex size-12 items-center justify-center rounded-full bg-muted/60">
-              <MessageSquarePlus className="size-6 text-muted-foreground/50" />
-            </div>
-            <div>
-              <p className="text-[13px] font-medium text-foreground">No comments yet</p>
-              <p className="mt-1 text-[12px] text-muted-foreground">
-                {searchQuery
-                  ? "No comments match your search."
-                  : filter === "all"
-                  ? "Click any element in the preview to add feedback."
-                  : "No comments match this filter."}
-              </p>
-            </div>
-          </div>
-        ) : (() => {
-          function classifyAndRender(list: Comment[]) {
-            const unlinked = list.filter(
-              (c) => !c.anchor?.selector && !c.anchor?.dataComment,
-            );
-            const orphaned = list.filter(
-              (c) => Boolean(c.anchor?.selector || c.anchor?.dataComment) && anchorResolvedMap?.[String(c.id)] === false,
-            );
-            const normal = list.filter(
-              (c) => !unlinked.includes(c) && !orphaned.includes(c),
-            );
-            let idx = 0;
-            const unlinkedNodes = renderThreadList(unlinked, idx, { isOrphaned: false, isUnlinked: true });
-            idx += unlinked.length;
-            const orphanedNodes = renderThreadList(orphaned, idx, { isOrphaned: true });
-            idx += orphaned.length;
-            const normalNodes = renderThreadList(normal, idx, { isOrphaned: false });
-            return <>{unlinkedNodes}{orphanedNodes}{normalNodes}</>;
-          }
-
-          const pageGroups = groupCommentsByPage(filteredBySearch, files, currentFileId);
-
-          if (!pageGroups) {
-            return classifyAndRender(filteredBySearch);
-          }
-
-          return pageGroups.map((group) => (
-            <div key={group.key} className="space-y-1.5">
-              <div className="sticky top-0 z-10 flex items-center gap-1.5 bg-bg-secondary px-1 pt-2 pb-1">
-                <FileText className="size-3 shrink-0 text-muted-foreground/60" />
-                <span className={cn(
-                  "truncate text-[11px] font-semibold",
-                  group.isCurrent ? "text-primary" : "text-muted-foreground",
-                )}>
-                  {group.label}
-                </span>
-                <span className="text-[10px] text-muted-foreground/50">({group.comments.length})</span>
+          {loading ? (
+            <ThreadListSkeleton />
+          ) : filteredBySearch.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <div className="flex size-12 items-center justify-center rounded-full bg-muted/60">
+                <MessageSquarePlus className="size-6 text-muted-foreground/50" />
               </div>
-              {classifyAndRender(group.comments)}
+              <div>
+                <p className="text-[13px] font-medium text-foreground">No comments yet</p>
+                <p className="mt-1 text-[12px] text-muted-foreground">
+                  {searchQuery
+                    ? "No comments match your search."
+                    : filter === "all"
+                      ? "Click any element in the preview to add feedback."
+                      : "No comments match this filter."}
+                </p>
+              </div>
             </div>
-          ));
-        })()}
-      </div>
+          ) : (
+            (() => {
+              function classifyAndRender(list: Comment[]) {
+                const unlinked = list.filter((c) => !c.anchor?.selector && !c.anchor?.dataComment);
+                const orphaned = list.filter(
+                  (c) =>
+                    Boolean(c.anchor?.selector || c.anchor?.dataComment) &&
+                    anchorResolvedMap?.[String(c.id)] === false,
+                );
+                const normal = list.filter((c) => !unlinked.includes(c) && !orphaned.includes(c));
+                let idx = 0;
+                const unlinkedNodes = renderThreadList(unlinked, idx, {
+                  isOrphaned: false,
+                  isUnlinked: true,
+                });
+                idx += unlinked.length;
+                const orphanedNodes = renderThreadList(orphaned, idx, { isOrphaned: true });
+                idx += orphaned.length;
+                const normalNodes = renderThreadList(normal, idx, { isOrphaned: false });
+                return (
+                  <>
+                    {unlinkedNodes}
+                    {orphanedNodes}
+                    {normalNodes}
+                  </>
+                );
+              }
 
-    </div>
+              const pageGroups = groupCommentsByPage(filteredBySearch, files, currentFileId);
+
+              if (!pageGroups) {
+                return classifyAndRender(filteredBySearch);
+              }
+
+              return pageGroups.map((group) => (
+                <div key={group.key} className="space-y-1.5">
+                  <div className="sticky -top-2.5 z-10 -mx-3 flex items-center gap-1.5 bg-bg-secondary px-4 py-1.5">
+                    <FileText className="size-3 shrink-0 text-muted-foreground/60" />
+                    <span
+                      className={cn(
+                        "truncate text-[11px] font-semibold",
+                        group.isCurrent ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {group.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/50">
+                      ({group.comments.length})
+                    </span>
+                  </div>
+                  {classifyAndRender(group.comments)}
+                </div>
+              ));
+            })()
+          )}
+        </div>
+      </div>
     </TooltipProvider>
   );
 }

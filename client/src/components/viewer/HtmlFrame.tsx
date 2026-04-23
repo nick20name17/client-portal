@@ -138,6 +138,29 @@ const BRIDGE_SCRIPT = `
     }
   }, true);
 
+  // Programmatic nav (location.href=, location.assign, form submit) resolves
+  // against the injected <base href> to raw.githubusercontent.com, which
+  // X-Frame-Options blocks. Intercept via Navigation API where supported.
+  if (window.navigation && typeof window.navigation.addEventListener === "function") {
+    window.navigation.addEventListener("navigate", function(ev){
+      try {
+        if (ev.hashChange || ev.downloadRequest != null) return;
+        var dest = ev.destination && ev.destination.url;
+        if (!dest) return;
+        var destUrl = new URL(dest);
+        var curUrl = new URL(window.location.href);
+        if (destUrl.origin === curUrl.origin && destUrl.pathname === curUrl.pathname) return;
+        var match = /([^/]+\\.html?)(?:\\?|#|$)/i.exec(destUrl.pathname);
+        if (match) {
+          ev.preventDefault();
+          window.parent.postMessage({ type: "FILE_NAV", href: match[1] }, "*");
+        } else if (destUrl.origin !== curUrl.origin) {
+          ev.preventDefault();
+        }
+      } catch (err) {}
+    });
+  }
+
   document.addEventListener("contextmenu", function(e){
     e.preventDefault();
     window.parent.postMessage({

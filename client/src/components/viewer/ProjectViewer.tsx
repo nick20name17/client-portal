@@ -580,13 +580,24 @@ function useViewerIframe({
   const iframeListenersDetachRef = useRef<(() => void) | undefined>(undefined);
 
   const handleFrameReady = useCallback(() => {
-    iframeListenersDetachRef.current?.();
+    // Previous frame may have navigated cross-origin (e.g. base-href link to
+    // raw.githubusercontent.com that X-Frame-Options blocks); touching its
+    // window throws SecurityError.
+    try { iframeListenersDetachRef.current?.(); } catch {}
     iframeListenersDetachRef.current = undefined;
 
     const iframeEl = iframeRef.current;
     if (!iframeEl) return;
-    const doc = iframeEl.contentDocument;
-    const win = iframeEl.contentWindow;
+    let doc: Document | null = null;
+    let win: Window | null = null;
+    try {
+      doc = iframeEl.contentDocument;
+      win = iframeEl.contentWindow;
+      // Touch a property to force SecurityError early if cross-origin.
+      void win?.document;
+    } catch {
+      return;
+    }
     if (!doc || !win) return;
 
     const onScrollOrResize = () => {
@@ -617,8 +628,8 @@ function useViewerIframe({
     }
 
     iframeListenersDetachRef.current = () => {
-      doc.removeEventListener("scroll", onScrollOrResize, { capture: true });
-      win.removeEventListener("resize", onScrollOrResize);
+      try { doc.removeEventListener("scroll", onScrollOrResize, { capture: true }); } catch {}
+      try { win.removeEventListener("resize", onScrollOrResize); } catch {}
       cancelAnimationFrame(mutationRaf);
       observer.disconnect();
     };
@@ -1711,7 +1722,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       <SidebarProvider
         open={commentsOpen}
         onOpenChange={(open) => dispatch({ type: "SET_COMMENTS_OPEN", open })}
-        style={{ "--sidebar-width": "21.25rem" } as CSSProperties}
+        style={{ "--sidebar-width": "22.5rem" } as CSSProperties}
       >
         <SidebarInset className="h-dvh overflow-hidden bg-background">
           {/* Main canvas area — full height, toolbar floats on top */}
