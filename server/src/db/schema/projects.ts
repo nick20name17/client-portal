@@ -63,6 +63,23 @@ export const fileVersions = pgTable(
   ],
 );
 
+export const commitFiles = pgTable(
+  "commit_files",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    commitSha: varchar("commit_sha", { length: 40 }).notNull(),
+    path: text("path").notNull(),
+    fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("commit_files_project_sha_path_unique").on(t.projectId, t.commitSha, t.path),
+    index("commit_files_project_sha_idx").on(t.projectId, t.commitSha),
+  ],
+);
+
 export const projectMembers = pgTable(
   "project_members",
   {

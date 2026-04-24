@@ -7,7 +7,10 @@ const PROJECT_KEYS = {
   all: () => ["projects"] as const,
   archived: () => ["projects", "archived"] as const,
   detail: (id: string) => ["projects", id] as const,
-  files: (projectId: string) => ["projects", projectId, "files"] as const,
+  files: (projectId: string, versionId?: number | null) =>
+    versionId
+      ? (["projects", projectId, "files", { versionId }] as const)
+      : (["projects", projectId, "files"] as const),
   members: (projectId: number) => ["projects", projectId, "members"] as const,
 };
 
@@ -21,10 +24,10 @@ const projectQuery = (id: string) =>
     enabled: !!id,
   });
 
-const projectFilesQuery = (projectId: string) =>
+const projectFilesQuery = (projectId: string, versionId?: number | null) =>
   queryOptions({
-    queryKey: PROJECT_KEYS.files(projectId),
-    queryFn: () => projectsService.getFiles(projectId),
+    queryKey: PROJECT_KEYS.files(projectId, versionId),
+    queryFn: () => projectsService.getFiles(projectId, versionId),
     enabled: !!projectId,
   });
 
@@ -54,9 +57,9 @@ export function useProject(id: string | undefined) {
   });
 }
 
-export function useProjectFiles(projectId: string | undefined) {
+export function useProjectFiles(projectId: string | undefined, versionId?: number | null) {
   return useQuery({
-    ...projectFilesQuery(projectId ?? ""),
+    ...projectFilesQuery(projectId ?? "", versionId),
     enabled: !!projectId,
   });
 }
@@ -123,7 +126,7 @@ export function useSyncProjectFiles() {
   return useMutation({
     mutationFn: (projectId: string) => projectsService.syncFiles(projectId),
     onSuccess: (_, projectId) => {
-      void qc.invalidateQueries({ queryKey: PROJECT_KEYS.files(projectId) });
+      void qc.invalidateQueries({ queryKey: ["projects", projectId, "files"] });
       void qc.invalidateQueries({ queryKey: PROJECT_KEYS.all() });
     },
   });

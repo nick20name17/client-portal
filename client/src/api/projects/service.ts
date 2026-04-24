@@ -18,8 +18,9 @@ export const projectsService = {
     return data;
   },
 
-  getFiles: async (projectId: string) => {
-    const { data } = await apiClient.get<ProjectFile[]>(`/projects/${projectId}/files`);
+  getFiles: async (projectId: string, versionId?: number | null) => {
+    const suffix = versionId ? `?versionId=${versionId}` : "";
+    const { data } = await apiClient.get<ProjectFile[]>(`/projects/${projectId}/files${suffix}`);
     return data;
   },
 

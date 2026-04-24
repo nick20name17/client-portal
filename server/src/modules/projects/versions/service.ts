@@ -167,22 +167,20 @@ export const FileVersionService = {
     const parsed = parseGithubRepoUrl(p.repoUrl);
     if (!parsed) return [];
 
+    // Refresh HEAD file list first: picks up newly added .html files and marks
+    // deleted ones as active=false. syncHeadFiles also calls syncVersionsForFile
+    // per file, so we don't need a second pass.
+    try {
+      const { syncHeadFiles } = await import("../service");
+      await syncHeadFiles(Number(projectId), parsed.owner, parsed.repo, null);
+    } catch (e) {
+      logger.error(`[checkNewVersions] head sync failed:`, e);
+    }
+
     const files = await db
       .select()
       .from(projectFiles)
       .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.active, true)));
-
-    await Promise.all(
-      files.map(async (f) => {
-        try {
-          await FileVersionService.syncVersionsForFile(
-            projectId, String(f.id), f.path, parsed.owner, parsed.repo, null,
-          );
-        } catch (e) {
-          logger.error(`[checkNewVersions] ${f.path}:`, e);
-        }
-      }),
-    );
 
     const results = await Promise.all(
       files.map(async (f) => {

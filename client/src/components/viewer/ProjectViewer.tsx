@@ -1104,7 +1104,6 @@ function useProjectViewerData(projectId: string) {
   const { user: authUser } = useAuth();
   const user = authUser as import("@/types").User | null;
   const { data: project } = useProject(projectId);
-  const { data: files, isPending: filesLoading } = useProjectFiles(projectId);
   const syncFiles = useSyncProjectFiles();
   const { data: projectMembersData } = useProjectMembers(project?.id);
   const mentionMembers = (projectMembersData ?? []).map((m) => ({
@@ -1128,6 +1127,12 @@ function useProjectViewerData(projectId: string) {
   }, [fileId, navSearch]);
   const [vs, dispatch] = useReducer(viewerReducer, viewerInitial);
   const { html, htmlLoading, htmlError, pinPositions, anchorResolvedMap, activeThreadId, ghostRaw, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector } = vs;
+  const { data: fileVersionsList } = useFileVersions(projectId, fileId ?? undefined);
+  // Scope sidebar only when user picked a non-latest version. Auto-selected
+  // latest → treat as HEAD to avoid flipping the list unnecessarily.
+  const latestVersionId = fileVersionsList?.[0]?.id ?? null;
+  const scopedVersionId = selectedVersionId && selectedVersionId !== latestVersionId ? selectedVersionId : null;
+  const { data: files, isPending: filesLoading } = useProjectFiles(projectId, scopedVersionId);
 
   const ghostRawRef = useRef(ghostRaw);
   useEffect(() => { ghostRawRef.current = ghostRaw; }, [ghostRaw]);
@@ -1243,7 +1248,6 @@ function useProjectViewerData(projectId: string) {
   }, [projectId, fileId, selectedVersionId]);
 
   const canManageVersions = user?.role === "admin" || user?.role === "manager";
-  const { data: fileVersionsList } = useFileVersions(projectId, fileId ?? undefined);
 
   const prevFileIdRef = useRef(fileId);
   useEffect(() => {

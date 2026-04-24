@@ -15,6 +15,13 @@
       "when": 1775565931754,
       "tag": "0001_add-project-archived-at",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777018180510,
+      "tag": "0002_add-commit-files",
+      "breakpoints": true
     }
   ]
 }

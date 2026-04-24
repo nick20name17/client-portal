@@ -86,9 +86,11 @@ export const projects = new Elysia({
   )
   .get(
     "/:id/files",
-    ({ user, params }) => ProjectService.listFiles(user, params.id),
+    ({ user, params, query }) =>
+      ProjectService.listFiles(user, params.id, query.versionId ? String(query.versionId) : undefined),
     {
       params: ProjectModelSchema.idParams,
+      query: t.Object({ versionId: t.Optional(t.Numeric()) }),
       response: { 200: ProjectModelSchema.fileList },
       auth: true,
     },

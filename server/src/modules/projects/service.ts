@@ -3,14 +3,14 @@ import { db } from "@/db";
 import { user as userTable } from "@/db/schema/auth";
 import { comments } from "@/db/schema/comments";
 import { companies } from "@/db/schema/companies";
-import { projectFiles, projectMembers, projects } from "@/db/schema/projects";
+import { commitFiles, fileVersions, projectFiles, projectMembers, projects } from "@/db/schema/projects";
 import { canViewProject, getProjectMemberRole, getProjectOrNull } from "@/lib/access";
 import { logger } from "@/lib/logger";
 import { sendEmailNotification } from "@/lib/send-email-notification";
 import { buildGithubRawUrl, fetchGithubTreeRecursive, parseGithubRepoUrl } from "@/lib/github";
 import { FileVersionService } from "./versions/service";
 import type { SessionUser } from "@/types";
-import { and, asc, count, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { status } from "elysia";
 import type { ProjectModel } from "./model";
 
@@ -25,6 +25,104 @@ async function canAddMember(user: SessionUser, projectId: string) {
   if (user.role !== "manager") return false;
   const r = await getProjectMemberRole(user.id, projectId);
   return r === "manager";
+}
+
+export async function syncHeadFiles(
+  projectId: number,
+  owner: string,
+  repo: string,
+  actorUserId: string | null,
+) {
+  const tree = await fetchGithubTreeRecursive(owner, repo, "HEAD");
+  const htmlPaths = tree
+    .filter((node) => node.type === "blob" && node.path.toLowerCase().endsWith(".html"))
+    .map((node) => node.path);
+  const now = new Date();
+
+  if (htmlPaths.length > 0) {
+    const upsertedFiles = await db
+      .insert(projectFiles)
+      .values(
+        htmlPaths.map((path) => ({
+          projectId,
+          path,
+          githubRawUrl: buildGithubRawUrl(owner, repo, "HEAD", path),
+          active: true as const,
+          updatedAt: now,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [projectFiles.projectId, projectFiles.path],
+        set: {
+          githubRawUrl: sql`excluded.github_raw_url`,
+          active: sql`excluded.active`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      })
+      .returning();
+    await Promise.all(
+      upsertedFiles.map((f) =>
+        FileVersionService.syncVersionsForFile(String(projectId), String(f.id), f.path, owner, repo, actorUserId)
+          .catch((e) => logger.error(`[syncHeadFiles] version sync failed for ${f.path}:`, e)),
+      ),
+    );
+    await db
+      .update(projectFiles)
+      .set({ active: false, updatedAt: now })
+      .where(and(eq(projectFiles.projectId, projectId), notInArray(projectFiles.path, htmlPaths)));
+  } else {
+    await db
+      .update(projectFiles)
+      .set({ active: false, updatedAt: now })
+      .where(eq(projectFiles.projectId, projectId));
+  }
+  return { htmlPaths };
+}
+
+async function ensureCommitFilesCached(
+  projectId: number,
+  commitSha: string,
+  owner: string,
+  repo: string,
+) {
+  const [existing] = await db
+    .select({ n: count() })
+    .from(commitFiles)
+    .where(and(eq(commitFiles.projectId, projectId), eq(commitFiles.commitSha, commitSha)));
+  if (Number(existing?.n ?? 0) > 0) return;
+
+  const tree = await fetchGithubTreeRecursive(owner, repo, commitSha);
+  const htmlPaths = tree
+    .filter((n) => n.type === "blob" && n.path.toLowerCase().endsWith(".html"))
+    .map((n) => n.path);
+
+  if (htmlPaths.length === 0) {
+    await db
+      .insert(commitFiles)
+      .values({ projectId, commitSha, path: "" })
+      .onConflictDoNothing();
+    return;
+  }
+
+  await db
+    .insert(commitFiles)
+    .values(htmlPaths.map((path) => ({ projectId, commitSha, path })))
+    .onConflictDoNothing();
+
+  // Ensure projectFiles rows exist so the UI has fileId/path for historical files
+  // that were deleted after this commit. Stays active=false until a HEAD sync
+  // finds them at HEAD, at which point syncHeadFiles flips active=true.
+  await db
+    .insert(projectFiles)
+    .values(
+      htmlPaths.map((path) => ({
+        projectId,
+        path,
+        githubRawUrl: buildGithubRawUrl(owner, repo, "HEAD", path),
+        active: false as const,
+      })),
+    )
+    .onConflictDoNothing();
 }
 
 async function canSyncFiles(user: SessionUser, projectId: string) {
@@ -310,12 +408,47 @@ export const ProjectService = {
     return { ok: true as const };
   },
 
-  async listFiles(user: SessionUser, projectId: string) {
+  async listFiles(user: SessionUser, projectId: string, versionId?: string) {
     if (!(await canViewProject(user, projectId))) forbidden();
+
+    if (!versionId) {
+      return db
+        .select()
+        .from(projectFiles)
+        .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.active, true)))
+        .orderBy(projectFiles.path);
+    }
+
+    const [ver] = await db
+      .select({ commitSha: fileVersions.commitSha })
+      .from(fileVersions)
+      .innerJoin(projectFiles, eq(fileVersions.fileId, projectFiles.id))
+      .where(and(eq(fileVersions.id, versionId), eq(projectFiles.projectId, projectId)))
+      .limit(1);
+    if (!ver) throw status(404, { error: "Not found" } satisfies ProjectModel["notFound"]);
+
+    const p = await getProjectOrNull(projectId);
+    if (!p) throw status(404, { error: "Not found" } satisfies ProjectModel["notFound"]);
+    const parsed = parseGithubRepoUrl(p.repoUrl);
+    if (!parsed) throw status(400, { error: "Invalid repoUrl" } satisfies ProjectModel["invalidRepo"]);
+
+    await ensureCommitFilesCached(p.id, ver.commitSha, parsed.owner, parsed.repo);
+
     return db
-      .select()
+      .select({
+        id: projectFiles.id,
+        projectId: projectFiles.projectId,
+        path: projectFiles.path,
+        githubRawUrl: projectFiles.githubRawUrl,
+        active: projectFiles.active,
+        updatedAt: projectFiles.updatedAt,
+      })
       .from(projectFiles)
-      .where(eq(projectFiles.projectId, projectId))
+      .innerJoin(
+        commitFiles,
+        and(eq(commitFiles.projectId, projectFiles.projectId), eq(commitFiles.path, projectFiles.path)),
+      )
+      .where(and(eq(projectFiles.projectId, projectId), eq(commitFiles.commitSha, ver.commitSha)))
       .orderBy(projectFiles.path);
   },
 
@@ -332,10 +465,9 @@ export const ProjectService = {
         error: "Invalid repoUrl",
       } satisfies ProjectModel["invalidRepo"]);
     }
-    const { owner, repo } = parsed;
-    let tree: Awaited<ReturnType<typeof fetchGithubTreeRecursive>>;
     try {
-      tree = await fetchGithubTreeRecursive(owner, repo, "HEAD");
+      const { htmlPaths } = await syncHeadFiles(p.id, parsed.owner, parsed.repo, user.id);
+      return { synced: htmlPaths.length, paths: htmlPaths };
     } catch (e) {
       logger.error("[syncFiles] GitHub tree fetch failed:", e);
       throw status(502, {
@@ -343,50 +475,6 @@ export const ProjectService = {
         detail: "Upstream API error",
       } satisfies ProjectModel["syncUpstreamError"]);
     }
-    const htmlPaths = tree
-      .filter((node) => node.type === "blob" && node.path.toLowerCase().endsWith(".html"))
-      .map((node) => node.path);
-    const now = new Date();
-    if (htmlPaths.length > 0) {
-      const upsertedFiles = await db
-        .insert(projectFiles)
-        .values(
-          htmlPaths.map((path) => ({
-            projectId: p.id,
-            path,
-            githubRawUrl: buildGithubRawUrl(owner, repo, "HEAD", path),
-            active: true as const,
-            updatedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [projectFiles.projectId, projectFiles.path],
-          set: {
-            githubRawUrl: sql`excluded.github_raw_url`,
-            active: sql`excluded.active`,
-            updatedAt: sql`excluded.updated_at`,
-          },
-        })
-        .returning();
-      await Promise.all(
-        upsertedFiles.map((f) =>
-          FileVersionService.syncVersionsForFile(p.id, f.id, f.path, owner, repo, user.id)
-            .catch((e) => logger.error(`[syncFiles] version sync failed for ${f.path}:`, e)),
-        ),
-      );
-    }
-    if (htmlPaths.length > 0) {
-      await db
-        .update(projectFiles)
-        .set({ active: false, updatedAt: now })
-        .where(and(eq(projectFiles.projectId, p.id), notInArray(projectFiles.path, htmlPaths)));
-    } else {
-      await db
-        .update(projectFiles)
-        .set({ active: false, updatedAt: now })
-        .where(eq(projectFiles.projectId, p.id));
-    }
-    return { synced: htmlPaths.length, paths: htmlPaths };
   },
 
   async getFileHtml(user: SessionUser, projectId: string, fileId: string, versionId?: string): Promise<string> {
@@ -404,7 +492,6 @@ export const ProjectService = {
     let fetchUrl = file.githubRawUrl;
 
     if (versionId) {
-      const { fileVersions } = await import("@/db/schema/projects");
       const [ver] = await db
         .select()
         .from(fileVersions)
@@ -416,6 +503,20 @@ export const ProjectService = {
       const parsed = p ? parseGithubRepoUrl(p.repoUrl) : null;
       if (parsed) {
         fetchUrl = buildGithubRawUrl(parsed.owner, parsed.repo, ver.commitSha, file.path);
+      }
+    } else if (!file.active) {
+      // File deleted at HEAD — fall back to the latest known fileVersion so the
+      // client can still open it from a historical snapshot without 404.
+      const [latest] = await db
+        .select({ commitSha: fileVersions.commitSha })
+        .from(fileVersions)
+        .where(eq(fileVersions.fileId, fileId))
+        .orderBy(desc(fileVersions.commitDate))
+        .limit(1);
+      const p = await getProjectOrNull(projectId);
+      const parsed = p ? parseGithubRepoUrl(p.repoUrl) : null;
+      if (latest && parsed) {
+        fetchUrl = buildGithubRawUrl(parsed.owner, parsed.repo, latest.commitSha, file.path);
       }
     }
 
