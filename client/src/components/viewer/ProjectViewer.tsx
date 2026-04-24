@@ -1515,7 +1515,7 @@ function useProjectViewerData(projectId: string) {
     fileId, setFileId,
     navSearch, setNavSearch, navSearchTargetRef,
     dispatch, vs,
-    html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
+    html, htmlLoading, htmlError, activeThreadId, selectedVersionId, scopedVersionId, latestVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
     anchorResolvedMap, isFullscreen, canManageVersions,
     topLevelComments, allTopLevelComments, comments, commentsLoading, allCommentsLoading, commentAnchors, anchorResolutionItems,
     handleAnchorResolution, iframe, wrappedHandleFrameReady, commentHandlers, dnd,
@@ -1681,7 +1681,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     fileId, setFileId,
     navSearch, setNavSearch, navSearchTargetRef,
     dispatch,
-    html, htmlLoading, htmlError, activeThreadId, selectedVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
+    html, htmlLoading, htmlError, activeThreadId, selectedVersionId, scopedVersionId, latestVersionId, commentsOpen, mobileSheet, forceOpenVersionSelector,
     anchorResolvedMap, isFullscreen, canManageVersions,
     topLevelComments, allTopLevelComments, comments, commentsLoading, allCommentsLoading, commentAnchors, anchorResolutionItems,
     handleAnchorResolution, iframe, wrappedHandleFrameReady, commentHandlers, dnd,
@@ -1766,15 +1766,30 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             <div className={cn("relative flex h-full min-h-0 min-w-0 flex-1 flex-col", isFullscreen ? "p-0" : "pt-24 px-3 pb-3 md:pt-24 md:px-4 md:pb-4")}>
               {!filesLoading && !files?.length ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-                  <p className="text-sm text-muted-foreground">No HTML files found.</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={syncFiles.isPending}
-                    onClick={() => syncFiles.mutate(projectId)}
-                  >
-                    {syncFiles.isPending ? "Syncing…" : "Sync files"}
-                  </Button>
+                  {scopedVersionId ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">No HTML files existed at this version.</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => dispatch({ type: "SET_VERSION", id: latestVersionId })}
+                      >
+                        Return to latest
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground">No HTML files found.</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={syncFiles.isPending}
+                        onClick={() => syncFiles.mutate(projectId)}
+                      >
+                        {syncFiles.isPending ? "Syncing…" : "Sync files"}
+                      </Button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className={cn(
