@@ -44,6 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getProjectColor } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompanies } from "@/api/companies/query";
@@ -208,8 +209,8 @@ function UsersTable({
 }) {
   const showActions = !!(onEdit || onDelete);
   const cols = showActions
-    ? "grid-cols-[1fr_auto_auto_auto_auto_auto]"
-    : "grid-cols-[1fr_auto_auto_auto_auto]";
+    ? "grid-cols-[1fr_auto_auto_auto_15rem_auto]"
+    : "grid-cols-[1fr_auto_auto_auto_15rem]";
   return (
     <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
       <div className={cn("grid items-center gap-4 border-b border-border px-5 py-2.5 text-[12px] font-medium text-text-tertiary", cols)}>
@@ -217,7 +218,7 @@ function UsersTable({
         <span className="hidden w-40 sm:block">Email</span>
         <span className="hidden w-20 sm:block">Role</span>
         <span className="hidden w-28 sm:block">Company</span>
-        <span className="hidden w-36 sm:block">Projects</span>
+        <span className="hidden w-60 sm:block">Projects</span>
         {showActions ? <span className="w-8" /> : null}
       </div>
       {users.map((u, i) => (
@@ -247,14 +248,30 @@ function UsersTable({
           <span className="hidden w-28 truncate text-[13px] text-text-secondary sm:block">
             {companyName(u.companyId)}
           </span>
-          <span className="hidden w-36 sm:flex items-center gap-1">
-            {u.projects?.slice(0, 3).map((p) => (
-              <Badge key={p.id} variant="secondary" className="text-[11px] truncate max-w-[5rem]" style={{ backgroundColor: getProjectColor(p.id) + "18", color: getProjectColor(p.id) }}>{p.name}</Badge>
+          <span className="hidden w-60 sm:flex items-center gap-1 min-w-0">
+            {u.projects?.slice(0, 2).map((p) => (
+              <Badge key={p.id} variant="secondary" className="text-[11px] truncate max-w-[6.5rem]" style={{ backgroundColor: getProjectColor(p.id) + "18", color: getProjectColor(p.id) }}>{p.name}</Badge>
             ))}
-            {(u.projects?.length ?? 0) > 3 ? (
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-                +{u.projects!.length - 3}
-              </span>
+            {(u.projects?.length ?? 0) > 2 ? (
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex h-5 shrink-0 cursor-default items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground"
+                    >
+                      +{u.projects!.length - 2}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    <div className="flex flex-col gap-0.5">
+                      {u.projects!.slice(2).map((p) => (
+                        <span key={p.id}>{p.name}</span>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             ) : null}
             {!u.projects?.length ? <span className="text-[12px] text-text-tertiary">&mdash;</span> : null}
           </span>
