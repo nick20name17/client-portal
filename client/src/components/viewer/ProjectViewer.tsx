@@ -1774,6 +1774,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }
 
   const sidebarProps = {
+    projectId,
     comments: allTopLevelComments,
     currentUser: user,
     members: mentionMembers,

@@ -69,6 +69,14 @@ export const projectsService = {
     return data;
   },
 
+  markCommentsRead: async (projectId: string, commentIds: number[]) => {
+    const { data } = await apiClient.post<{ ok: true; marked: number }>(
+      `/projects/${projectId}/comments/mark-read`,
+      { commentIds },
+    );
+    return data;
+  },
+
   removeMember: async (projectId: number, userId: string) => {
     const { data } = await apiClient.delete<{ ok: true }>(
       `/projects/${projectId}/members/${userId}`,

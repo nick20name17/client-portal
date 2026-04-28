@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import type { Project } from "@/types";
 import type { AddMemberPayload, CreateProjectPayload, UpdateProjectPayload } from "./schema";
 import { projectsService } from "./service";
 
@@ -139,6 +140,32 @@ export function useAddProjectMember() {
       projectsService.addMember(projectId, payload),
     onSuccess: (_, v) =>
       qc.invalidateQueries({ queryKey: PROJECT_KEYS.members(v.projectId) }),
+  });
+}
+
+export function useMarkProjectCommentsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, commentIds }: { projectId: string; commentIds: number[] }) =>
+      projectsService.markCommentsRead(projectId, commentIds),
+    onSuccess: (data, vars) => {
+      if (data.marked === 0) return;
+      const pid = Number(vars.projectId);
+      const decrement = (list: Project[] | undefined) =>
+        list?.map((p) =>
+          p.id === pid && p._count
+            ? {
+                ...p,
+                _count: {
+                  ...p._count,
+                  unreadComments: Math.max(0, p._count.unreadComments - data.marked),
+                },
+              }
+            : p,
+        );
+      qc.setQueryData(PROJECT_KEYS.all(), decrement);
+      qc.setQueryData(PROJECT_KEYS.archived(), decrement);
+    },
   });
 }
 

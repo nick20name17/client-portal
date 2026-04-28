@@ -7,6 +7,7 @@ export const wsEvents = {
   commentUpdated: "comment.updated",
   commentDeleted: "comment.deleted",
   commentResolved: "comment.resolved",
+  commentRead: "comment.read",
 } as const;
 
 export function setWsServer(server: Server): void {

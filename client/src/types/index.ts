@@ -32,7 +32,7 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
-  _count?: { comments: number; files: number; members: number };
+  _count?: { comments: number; files: number; members: number; unreadComments: number };
   memberPreview?: { id: string; name: string; image: string | null }[];
 }
 

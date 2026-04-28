@@ -36,6 +36,23 @@ export const comments = pgTable(
   ],
 );
 
+export const commentReads = pgTable(
+  "comment_reads",
+  {
+    commentId: integer("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.commentId, t.userId] }),
+    index("comment_reads_user_id_idx").on(t.userId),
+  ],
+);
+
 export const commentTags = pgTable(
   "comment_tags",
   {

@@ -6,6 +6,7 @@ import { FileText, MessageCircle } from "lucide-react";
 import { useProjectFiles } from "@/api/projects/query";
 import { apiText } from "@/lib/api";
 import { getProjectColor } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Project } from "@/types";
 
 function useFirstFileHtml(projectId: number, fileId: number | undefined) {
@@ -33,6 +34,7 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
   const accent = getProjectColor(project.id);
   const comments = project._count?.comments ?? 0;
   const filesCount = project._count?.files ?? 0;
+  const unread = project._count?.unreadComments ?? 0;
 
   const { data: files } = useProjectFiles(String(project.id));
   const firstFile = files?.find((f) => /home\.html?$/i.test(f.path)) ?? files?.[0];
@@ -120,6 +122,23 @@ export function ProjectPreviewCard({ project }: { project: Project }) {
         )}
         {/* Click capture overlay */}
         <div className="absolute inset-0" />
+        {unread > 0 ? (
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="absolute left-2 top-2 z-10 inline-flex h-5 min-w-5 items-center justify-center gap-1 rounded-full bg-primary px-1.5 text-[11px] font-semibold tabular-nums text-primary-foreground shadow-sm"
+                >
+                  <MessageCircle className="size-3" />
+                  {unread}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                {unread} непрочитан{unread === 1 ? "ий коментар" : unread < 5 ? "их коментарі" : "их коментарів"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
       </div>
 
       {/* Info */}

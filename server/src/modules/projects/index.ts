@@ -55,6 +55,16 @@ export const projects = new Elysia({
     response: { 200: ProjectModelSchema.ok },
     auth: true,
   })
+  .post(
+    "/:id/comments/mark-read",
+    ({ user, params, body }) => ProjectService.markCommentsRead(user, params.id, body.commentIds),
+    {
+      params: ProjectModelSchema.idParams,
+      body: ProjectModelSchema.markReadBody,
+      response: { 200: ProjectModelSchema.markReadResponse },
+      auth: true,
+    },
+  )
   .get(
     "/:id/members",
     ({ user, params }) => ProjectService.listMembers(user, params.id),

@@ -22,6 +22,7 @@ const countShape = t.Object({
   comments: t.Number(),
   files: t.Number(),
   members: t.Number(),
+  unreadComments: t.Number(),
 });
 
 const projectListItem = t.Object({
@@ -113,6 +114,8 @@ export const ProjectModelSchema = {
   upstreamFetch: t.Object({ error: t.Literal("Upstream fetch failed") }),
   memberConflict: t.Object({ error: t.Literal("Already a member") }),
   ok: t.Object({ ok: t.Literal(true) }),
+  markReadBody: t.Object({ commentIds: t.Array(t.Number(), { maxItems: 500 }) }),
+  markReadResponse: t.Object({ ok: t.Literal(true), marked: t.Number() }),
 } as const;
 
 export type ProjectModel = InferSchema<typeof ProjectModelSchema>;

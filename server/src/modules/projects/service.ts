@@ -1,16 +1,17 @@
 import { env } from "@/utils/env";
 import { db } from "@/db";
 import { user as userTable } from "@/db/schema/auth";
-import { comments } from "@/db/schema/comments";
+import { commentReads, comments } from "@/db/schema/comments";
 import { companies } from "@/db/schema/companies";
 import { commitFiles, fileVersions, projectFiles, projectMembers, projects } from "@/db/schema/projects";
 import { canViewProject, getProjectMemberRole, getProjectOrNull } from "@/lib/access";
 import { logger } from "@/lib/logger";
+import { wsEmit, wsEvents } from "@/plugins/ws";
 import { sendEmailNotification } from "@/lib/send-email-notification";
 import { buildGithubRawUrl, fetchGithubTreeRecursive, parseGithubRepoUrl } from "@/lib/github";
 import { FileVersionService } from "./versions/service";
 import type { SessionUser } from "@/types";
-import { and, asc, count, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
 import { status } from "elysia";
 import type { ProjectModel } from "./model";
 
@@ -138,14 +139,23 @@ function forbidden(): never {
 
 async function enrichProjectRows(
   rows: { project: typeof projects.$inferSelect; company: typeof companies.$inferSelect }[],
+  viewerId: string,
 ): Promise<ProjectModel["listResponse"]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.project.id);
 
-  const [commentAgg, fileAgg, memberAgg] = await Promise.all([
+  const [commentAgg, fileAgg, memberAgg, memberRows] = await Promise.all([
     db
-      .select({ projectId: comments.projectId, n: count() })
+      .select({
+        projectId: comments.projectId,
+        total: count(),
+        unread: sql<number>`count(*) filter (where ${comments.authorId} <> ${viewerId} and ${commentReads.commentId} is null)`,
+      })
       .from(comments)
+      .leftJoin(
+        commentReads,
+        and(eq(commentReads.commentId, comments.id), eq(commentReads.userId, viewerId)),
+      )
       .where(and(inArray(comments.projectId, ids), isNull(comments.deletedAt)))
       .groupBy(comments.projectId),
     db
@@ -158,21 +168,21 @@ async function enrichProjectRows(
       .from(projectMembers)
       .where(inArray(projectMembers.projectId, ids))
       .groupBy(projectMembers.projectId),
+    db
+      .select({
+        projectId: projectMembers.projectId,
+        userId: userTable.id,
+        name: userTable.name,
+        image: userTable.image,
+      })
+      .from(projectMembers)
+      .innerJoin(userTable, eq(projectMembers.userId, userTable.id))
+      .where(inArray(projectMembers.projectId, ids))
+      .orderBy(asc(projectMembers.projectId), asc(projectMembers.addedAt)),
   ]);
 
-  const memberRows = await db
-    .select({
-      projectId: projectMembers.projectId,
-      userId: userTable.id,
-      name: userTable.name,
-      image: userTable.image,
-    })
-    .from(projectMembers)
-    .innerJoin(userTable, eq(projectMembers.userId, userTable.id))
-    .where(inArray(projectMembers.projectId, ids))
-    .orderBy(asc(projectMembers.projectId), asc(projectMembers.addedAt));
-
-  const commentMap = Object.fromEntries(commentAgg.map((c) => [c.projectId, Number(c.n)]));
+  const commentMap = Object.fromEntries(commentAgg.map((c) => [c.projectId, Number(c.total)]));
+  const unreadMap = Object.fromEntries(commentAgg.map((c) => [c.projectId, Number(c.unread)]));
   const fileMap = Object.fromEntries(fileAgg.map((c) => [c.projectId, Number(c.n)]));
   const memberMap = Object.fromEntries(memberAgg.map((c) => [c.projectId, Number(c.n)]));
 
@@ -192,12 +202,40 @@ async function enrichProjectRows(
       comments: commentMap[project.id] ?? 0,
       files: fileMap[project.id] ?? 0,
       members: memberMap[project.id] ?? 0,
+      unreadComments: unreadMap[project.id] ?? 0,
     },
     memberPreview: previewByProject.get(project.id) ?? [],
   }));
 }
 
 export const ProjectService = {
+  async markCommentsRead(user: SessionUser, projectId: string, commentIds: number[]) {
+    if (!(await canViewProject(user, projectId))) forbidden();
+    if (commentIds.length === 0) return { ok: true as const, marked: 0 };
+    const rows = await db
+      .select({ id: comments.id })
+      .from(comments)
+      .where(
+        and(
+          eq(comments.projectId, projectId),
+          inArray(comments.id, commentIds),
+          isNull(comments.deletedAt),
+          ne(comments.authorId, user.id),
+        ),
+      );
+    if (rows.length === 0) return { ok: true as const, marked: 0 };
+    await db
+      .insert(commentReads)
+      .values(rows.map((r) => ({ commentId: r.id, userId: user.id })))
+      .onConflictDoNothing();
+    wsEmit(projectId, wsEvents.commentRead, {
+      projectId,
+      userId: user.id,
+      commentIds: rows.map((r) => r.id),
+    });
+    return { ok: true as const, marked: rows.length };
+  },
+
   async listForUser(user: SessionUser): Promise<ProjectModel["listResponse"]> {
     if (user.role === "admin") {
       const rows = await db
@@ -206,7 +244,7 @@ export const ProjectService = {
         .innerJoin(companies, eq(projects.companyId, companies.id))
         .where(isNull(projects.archivedAt))
         .orderBy(projects.createdAt);
-      return enrichProjectRows(rows);
+      return enrichProjectRows(rows, user.id);
     }
     const rows = await db
       .select({ project: projects, company: companies })
@@ -215,7 +253,7 @@ export const ProjectService = {
       .innerJoin(projectMembers, eq(projects.id, projectMembers.projectId))
       .where(and(eq(projectMembers.userId, user.id), isNull(projects.archivedAt)))
       .orderBy(projects.createdAt);
-    return enrichProjectRows(rows);
+    return enrichProjectRows(rows, user.id);
   },
 
   async create(user: SessionUser, body: ProjectModel["create"]) {
@@ -289,7 +327,7 @@ export const ProjectService = {
       .innerJoin(companies, eq(projects.companyId, companies.id))
       .where(sql`${projects.archivedAt} is not null`)
       .orderBy(projects.createdAt);
-    return enrichProjectRows(rows);
+    return enrichProjectRows(rows, user.id);
   },
 
   async archive(user: SessionUser, id: string) {

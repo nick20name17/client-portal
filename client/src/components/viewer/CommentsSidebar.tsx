@@ -16,7 +16,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   commentToMarkdown,
@@ -35,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { MentionBody } from "@/lib/mention-utils";
 import { cn, formatRelativeShort } from "@/lib/utils";
 import type { Anchor, Comment, FileVersion, Tag, User } from "@/types";
+import { useMarkProjectCommentsRead } from "@/api/projects/query";
 
 function commentAuthorLabel(comment: Comment, currentUser?: User | null): string {
   const fromName = comment.author?.name?.trim();
@@ -612,6 +613,7 @@ function groupCommentsByPage(
 }
 
 export function CommentsSidebar({
+  projectId,
   comments,
   currentUser,
   members,
@@ -634,6 +636,7 @@ export function CommentsSidebar({
   files,
   currentFileId,
 }: {
+  projectId: string;
   comments: Comment[] | undefined;
   currentUser?: User | null;
   members?: MentionMember[];
@@ -721,6 +724,99 @@ export function CommentsSidebar({
     }
     return rows;
   }, [filtered, searchQuery, selectedTagIds]);
+
+  const markRead = useMarkProjectCommentsRead();
+  const markReadMutate = markRead.mutate;
+  const seenRef = useRef<Set<number>>(new Set());
+  const pendingRef = useRef<Set<number>>(new Set());
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibleTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+
+  const flushPending = useCallback(() => {
+    flushTimerRef.current = null;
+    if (pendingRef.current.size === 0) return;
+    const ids = Array.from(pendingRef.current);
+    pendingRef.current.clear();
+    for (const id of ids) seenRef.current.add(id);
+    markReadMutate({ projectId, commentIds: ids });
+  }, [markReadMutate, projectId]);
+
+  const enqueueRead = useCallback(
+    (id: number) => {
+      if (seenRef.current.has(id)) return;
+      pendingRef.current.add(id);
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = setTimeout(flushPending, 800);
+    },
+    [flushPending],
+  );
+
+  const commentsById = useMemo(() => {
+    const m = new Map<number, Comment>();
+    for (const c of comments ?? []) m.set(c.id, c);
+    return m;
+  }, [comments]);
+
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container || !currentUser) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const idAttr = (e.target as HTMLElement).getAttribute("data-comment-root-id");
+          const id = idAttr ? Number(idAttr) : NaN;
+          if (!Number.isFinite(id)) continue;
+          const timers = visibleTimersRef.current;
+          if (e.isIntersecting && e.intersectionRatio >= 0.5) {
+            if (seenRef.current.has(id) || timers.has(id)) continue;
+            const c = commentsById.get(id);
+            if (!c || c.authorId === currentUser.id) continue;
+            const t = setTimeout(() => {
+              timers.delete(id);
+              enqueueRead(id);
+            }, 700);
+            timers.set(id, t);
+          } else {
+            const t = timers.get(id);
+            if (t) {
+              clearTimeout(t);
+              timers.delete(id);
+            }
+          }
+        }
+      },
+      { root: container, threshold: [0, 0.5, 1] },
+    );
+    const nodes = container.querySelectorAll<HTMLElement>("[data-comment-root-id]");
+    nodes.forEach((n) => io.observe(n));
+    return () => {
+      io.disconnect();
+    };
+  }, [commentsById, enqueueRead, currentUser, filteredBySearch]);
+
+  useEffect(() => {
+    if (!activeThreadId || !currentUser) return;
+    const root = commentsById.get(activeThreadId);
+    if (!root) return;
+    if (root.authorId !== currentUser.id) enqueueRead(root.id);
+    for (const r of root.replies ?? []) {
+      if (r.authorId !== currentUser.id) enqueueRead(r.id);
+    }
+  }, [activeThreadId, commentsById, enqueueRead, currentUser]);
+
+  // Quick back-navigations would otherwise drop in-flight visibility timers silently.
+  useEffect(() => {
+    return () => {
+      const timers = visibleTimersRef.current;
+      timers.forEach((t, id) => {
+        clearTimeout(t);
+        if (!seenRef.current.has(id)) pendingRef.current.add(id);
+      });
+      timers.clear();
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushPending();
+    };
+  }, [flushPending]);
 
   const exportable = useMemo(() => {
     if (!currentFileId) return [];
