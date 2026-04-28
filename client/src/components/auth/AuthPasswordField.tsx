@@ -21,6 +21,7 @@ export function AuthPasswordField({
   error,
   toggleAriaLabel,
   className,
+  placeholder = "••••••••",
   ...inputProps
 }: AuthPasswordFieldProps) {
   return (
@@ -31,6 +32,7 @@ export function AuthPasswordField({
           type={show ? "text" : "password"}
           aria-invalid={!!error}
           className={cn("pr-9", className)}
+          placeholder={placeholder}
           {...inputProps}
         />
         <button
