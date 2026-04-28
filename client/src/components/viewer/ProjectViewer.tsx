@@ -13,7 +13,7 @@ import {
 } from "react";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { flushSync } from "react-dom";
-import { ArrowLeft, Expand, MessageCircle, MessageSquarePlus, Minimize } from "lucide-react";
+import { ArrowLeft, ChevronDown, Expand, MessageCircle, MessageSquarePlus, Minimize } from "lucide-react";
 import { parseAsInteger, useQueryState } from "nuqs";
 import { toast } from "sonner";
 
@@ -25,6 +25,7 @@ import { NewCommentComposePopover } from "@/components/viewer/NewCommentComposeP
 import { VersionSelector } from "@/components/viewer/VersionSelector";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -919,26 +920,59 @@ function ViewerHeaderBar({
       </div>
 
       <div className="flex items-center gap-1 overflow-x-auto border-t border-border/40 px-3 py-2 scrollbar-none">
-        {[...(files ?? [])].sort((a, b) => {
-          const aHome = /home\.html?$/i.test(a.path) ? 0 : 1;
-          const bHome = /home\.html?$/i.test(b.path) ? 0 : 1;
-          return aHome - bHome;
-        }).map((f) => {
-          const active = String(f.id) === fileId;
+        {groupFiles(files ?? []).map((item) => {
+          if (item.kind === "single") {
+            const f = item.file;
+            const active = String(f.id) === fileId;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => onSetFileId(String(f.id))}
+                className={cn(
+                  "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
+                  active
+                    ? "bg-foreground/8 text-foreground"
+                    : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                )}
+              >
+                {formatFileName(f.path)}
+              </button>
+            );
+          }
+          const hasActive = item.files.some((f) => String(f.id) === fileId);
           return (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => onSetFileId(String(f.id))}
-              className={cn(
-                "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
-                active
-                  ? "bg-foreground/8 text-foreground"
-                  : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-              )}
-            >
-              {formatFileName(f.path)}
-            </button>
+            <DropdownMenu key={`group:${item.prefix}`}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "shrink-0 inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
+                    hasActive
+                      ? "bg-foreground/8 text-foreground"
+                      : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                  )}
+                >
+                  {item.prefix}
+                  <ChevronDown className="size-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-40">
+                {item.files.map((f) => {
+                  const active = String(f.id) === fileId;
+                  const label = stripPrefix(formatFileName(f.path), item.prefix);
+                  return (
+                    <DropdownMenuItem
+                      key={f.id}
+                      onSelect={() => onSetFileId(String(f.id))}
+                      className={cn(active && "bg-foreground/8 text-foreground")}
+                    >
+                      {label}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           );
         })}
       </div>
@@ -1534,6 +1568,48 @@ function formatFileName(path: string) {
     .replace(/\.html?$/i, "")
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function stripPrefix(name: string, prefix: string) {
+  if (name === prefix) return name;
+  if (name.toLowerCase().startsWith(prefix.toLowerCase() + " ")) {
+    return name.slice(prefix.length + 1);
+  }
+  return name;
+}
+
+type FileLite = { id: number; path: string };
+type FileGroupItem =
+  | { kind: "single"; file: FileLite }
+  | { kind: "group"; prefix: string; files: FileLite[] };
+
+function groupFiles(files: FileLite[]): FileGroupItem[] {
+  const home: FileLite[] = [];
+  const byPrefix = new Map<string, FileLite[]>();
+  const order: string[] = [];
+  for (const f of files) {
+    if (/home\.html?$/i.test(f.path)) {
+      home.push(f);
+      continue;
+    }
+    const name = formatFileName(f.path);
+    const rawPrefix = name.split(" ")[0] ?? name;
+    const key = rawPrefix.toLowerCase();
+    if (!byPrefix.has(key)) {
+      byPrefix.set(key, []);
+      order.push(key);
+    }
+    byPrefix.get(key)!.push(f);
+  }
+  const items: FileGroupItem[] = [];
+  for (const f of home) items.push({ kind: "single", file: f });
+  for (const key of order) {
+    const group = byPrefix.get(key)!;
+    const display = (formatFileName(group[0]!.path).split(" ")[0] ?? key);
+    if (group.length >= 3) items.push({ kind: "group", prefix: display, files: group });
+    else for (const f of group) items.push({ kind: "single", file: f });
+  }
+  return items;
 }
 
 function MobileFileSelector({
