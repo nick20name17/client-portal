@@ -36,6 +36,31 @@ type GithubCommit = {
   date: string | null;
 };
 
+export async function fetchRepoCommits(
+  owner: string,
+  repo: string,
+  perPage: number = 100,
+): Promise<GithubCommit[]> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=${perPage}`;
+  const res = await fetch(url, {
+    headers: githubHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`GitHub API error: ${res.status} ${await res.text()}`);
+  }
+  const data = (await res.json()) as {
+    sha: string;
+    commit: { message: string; author?: { name?: string; date?: string } | null };
+  }[];
+  return data.map((c) => ({
+    sha: c.sha,
+    message: c.commit.message.split("\n")[0],
+    author: c.commit.author?.name ?? null,
+    date: c.commit.author?.date ?? null,
+  }));
+}
+
 export async function fetchFileCommits(
   owner: string,
   repo: string,

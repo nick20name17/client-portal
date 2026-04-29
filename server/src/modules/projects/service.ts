@@ -41,7 +41,7 @@ export async function syncHeadFiles(
   const now = new Date();
 
   if (htmlPaths.length > 0) {
-    const upsertedFiles = await db
+    await db
       .insert(projectFiles)
       .values(
         htmlPaths.map((path) => ({
@@ -59,18 +59,13 @@ export async function syncHeadFiles(
           active: sql`excluded.active`,
           updatedAt: sql`excluded.updated_at`,
         },
-      })
-      .returning();
-    await Promise.all(
-      upsertedFiles.map((f) =>
-        FileVersionService.syncVersionsForFile(String(projectId), String(f.id), f.path, owner, repo, actorUserId)
-          .catch((e) => logger.error(`[syncHeadFiles] version sync failed for ${f.path}:`, e)),
-      ),
-    );
+      });
     await db
       .update(projectFiles)
       .set({ active: false, updatedAt: now })
       .where(and(eq(projectFiles.projectId, projectId), notInArray(projectFiles.path, htmlPaths)));
+    await FileVersionService.syncProjectCommits(projectId, owner, repo, actorUserId)
+      .catch((e) => logger.error(`[syncHeadFiles] project commit sync failed:`, e));
   } else {
     await db
       .update(projectFiles)
@@ -80,7 +75,7 @@ export async function syncHeadFiles(
   return { htmlPaths };
 }
 
-async function ensureCommitFilesCached(
+export async function ensureCommitFilesCached(
   projectId: number,
   commitSha: string,
   owner: string,
